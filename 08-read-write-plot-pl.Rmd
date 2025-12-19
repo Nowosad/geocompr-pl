@@ -1,0 +1,801 @@
+## Wymagania dotyczące
+
+# danych{#read-write}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## {-}
+
+# geograficznych I/O
+
+W tym rozdziale potrzebne są następujące pakiety:
+
+```{r 07-read-write-plot-1, message=FALSE}
+library(sf)
+library(terra)
+library(dplyr)
+library(spData)
+```
+
+## Wprowadzenie
+
+Ten rozdział dotyczy odczytu i zapisu danych geograficznych.*Wprowadzanie*
+danych geograficznychjest niezbędne do obliczeń geograficznych\\index{geocomputation}: bez danych nie da się tworzyć aplikacji do rzeczywistych zastosowań.
+*Wyjście*danychjest również istotne, ponieważ umożliwia innym korzystanie z cennych nowych lub ulepszonych zbiorów danych powstałych w wyniku Twojej pracy.
+Łącznie procesy wejścia/wyjścia można określić jako dane wejścia/wyjścia.Dane
+geograficzne wejścia/wyjścia są często wykonywane w pośpiechu na początku i na końcu projektów,a poza tym ignorowane.
+Jednak import i eksport danych mają fundamentalne znaczenie dla powodzenia lub niepowodzenia projektów: niewielkie błędy wejścia/wyjścia popełnione na początku projektów (np. użycie nieaktualnego zbioru danych) mogą prowadzić do poważnych problemów w dalszej części projektu.
+
+Istnieje wiele formatów plików geograficznych, z których każdy ma swoje zalety i wady, jak opisano w sekcji @ref(formaty-plików).
+Odczytywanie i zapisywanie tych formatów plików omówiono odpowiednio w sekcjach @ref(data-input) i @ref(data-output).
+Jeśli chodzi o miejsce,w którym można*znaleźć*dane, sekcja @ref(retrieving-data) opisuje*geoportale*i sposób importowania danych z nich.
+Dedykowane pakiety ułatwiające import danych geograficznych ze źródeł takich jak OpenStreetMap opisano w sekcji @ref(geographic-data-packages).
+Jeśli chcesz wykorzystać swoje dane w usługach internetowych (lub jeśli chcesz mieć pewność, że Twoje dane są zgodne z ustalonymi standardami), ważne są metadane geograficzne, opisane w sekcji @ref(geographic-metadata).
+Inną możliwością uzyskania danych przestrzennych jest skorzystanie z usług internetowych, opisanych w sekcji @ref(geographic-web-services).
+Ostatnia sekcja @ref(visual-outputs) przedstawia metody zapisywania wyników wizualnych (map) w ramach przygotowań do rozdziału @ref(adv-map) poświęconego wizualizacji.
+
+## Formaty plików
+
+\\indexZbiory{file formats}
+danych geograficznych są zazwyczaj przechowywane w postaci plików lub w przestrzennych bazach danych.
+Formaty plików mogą przechowywać dane wektorowe lub rastrowe, natomiast przestrzenne bazy danych, takie jak[PostGIS,](https://postgis.net/)mogą przechowywać oba rodzaje danych (zobacz również sekcję @ref(postgis)).
+Obecnie różnorodność formatów plików może wydawać się przytłaczająca, ale od początku istnienia oprogramowania GIS w latach 60. XX wieku, kiedy to na Uniwersytecie Harvarda powstałpierwszy szeroko rozpowszechniony program ([SYMAP](https://news.harvard.edu/gazette/story/2011/10/the-invention-of-gis/) ) do analizy przestrzennej [@coppock_history_1991] ,nastąpiła znaczna konsolidacja i standaryzacja .
+
+\\index{GDAL}
+GDAL (które należy wymawiać jako „goo-dal”, gdzie podwójne „o” odnosi się do orientacji obiektowej), Geospatial Data Abstraction Library, od momentu wprowadzenia na rynek w 2000 r. rozwiązało wiele problemów związanych z niekompatybilnością formatów plików geograficznych.
+ GDAL zapewnia ujednolicony i wydajny interfejs do odczytu i zapisu wielu formatów danych rastrowych i wektorowych.^ [Jak wspomnieliśmy w rozdziale @ref(operacje geometryczne), GDAL zawiera również zestaw funkcji użytkowych umożliwiających mozaikowanie rastrowe, ponowne próbkowanie, kadrowanie, reprojekcję itp.]
+Wiele otwartych i zastrzeżonych programów GIS, w tym GRASS GIS, ArcGIS\\index{ArcGIS}i QGIS\\index{QGIS}, wykorzystuje GDAL\\index{GDAL}za swoimi interfejsami graficznymi\\index{graphical user interface}do wykonywania podstawowych zadań związanych z pobieraniem i wyświetlaniem danych geograficznych w odpowiednich formatach.
+
+GDAL\\index{GDAL}zapewnia dostęp do ponad 200 formatów danych wektorowych i rastrowych.
+Tabela @ref(tab:formats) przedstawia podstawowe informacje o wybranych i często używanych formatach plików przestrzennych.
+
+```{r formats, echo=FALSE}
+file_formats = tibble::tribble(~Name, ~Extension, ~Information, ~Type, ~Model, 
+                         "ESRI Shapefile", ".shp (the main file)", "Popular format consisting of at least three files. No support for: files > 2 GB;  mixed types; names > 10 chars; cols > 255.", "Vector", "Partially open",
+                         "GeoJSON", ".geojson", "Extends the JSON exchange format by including a subset of the simple feature representation; mostly used for storing coordinates in longitude and latitude; it is extended by the TopoJSON format.", "Vector", "Open",
+                         "KML", ".kml", "XML-based format for spatial visualization, developed for use with Google Earth. Zipped KML file forms the KMZ format.", "Vector", "Open",
+                         "GPX", ".gpx", "XML schema created for exchange of GPS data.", "Vector", "Open",
+                         "FlatGeobuf", ".fgb", "Single file format allowing for quick reading and writing of vector data. Has streaming capabilities.", "Vector", "Open",
+                         "GeoTIFF", ".tif/.tiff", "Popular raster format. A TIFF file containing additional spatial metadata.", "Raster", "Open",
+                         "Arc ASCII", ".asc", "Text format where the first six lines represent the raster header, followed by the raster cell values arranged in rows and columns.", "Raster", "Open",
+                         "SQLite/SpatiaLite", ".sqlite", "Standalone  relational database, SpatiaLite is the spatial extension of SQLite.", "Vector and raster", "Open",
+                         "ESRI FileGDB", ".gdb", "Spatial and non-spatial objects created by ArcGIS. Allows multiple feature classes; topology. Limited support from GDAL.", "Vector and raster", "Proprietary",
+                         "GeoPackage", ".gpkg", "Lightweight database container based on SQLite allowing an easy and platform-independent exchange of geodata.", "Vector and (very limited) raster", "Open"
+                         )
+knitr::kable(file_formats, 
+             caption = "Selected spatial file formats.",
+             caption.short = "Selected spatial file formats.",
+             booktabs = TRUE) |> 
+  kableExtra::column_spec(2, width = "5em") |> 
+  kableExtra::column_spec(3, width = "12em") |> 
+  kableExtra::column_spec(4, width = "4em") |>   
+  kableExtra::column_spec(5, width = "5em") |>
+  kableExtra::kable_styling(latex_options = "scale_down")
+```
+
+\\index{Shapefile}
+\\indexWażnym{GeoPackage}
+wydarzeniem zapewniającym standaryzację i otwartość formatów plików było utworzeniew 1994 r.konsorcjum Open Geospatial Consortium ([OGC](https://www.ogc.org/)).
+Oprócz zdefiniowania modelu danych prostych obiektów (patrz sekcja @ref(intro-sf)), OGC koordynuje również opracowywanie otwartych standardów, stosowanych na przykład w formatach plików takich jak GML\\index{GML}, KML\\index{KML}i GeoPackage\\index{GeoPackage}.
+Otwarte formaty plików zatwierdzone przez OGC mają kilka zalet w porównaniu z formatami zastrzeżonymi: standardy są publikowane, zapewniają przejrzystość i dają użytkownikom możliwość dalszego rozwoju i dostosowania formatów plików do ich konkretnych potrzeb.
+
+ESRI Shapefile\\index{Shapefile}jest najpopularniejszym formatem wymiany danych wektorowych, jednak nie jest to format otwarty (chociaż jego specyfikacja jest otwarta).
+Został opracowany na początku lat 90. i ma szereg ograniczeń.
+Po pierwsze, jest to format wieloplikowy, składający się z co najmniej trzech plików.
+Obsługuje tylko 255 kolumn, nazwy kolumn są ograniczone do dziesięciu znaków, a limit rozmiaru pliku wynosi 2 GB.
+Ponadto ESRI Shapefile\\index{Shapefile} nie obsługuje wszystkich możliwych typów geometrii, na przykład nie jest w stanie odróżnić wielokąta od wielokąta wielokrotnego.^ [Aby dowiedzieć się więcej o ograniczeniach ESRI Shapefile i możliwych alternatywnych formatach plików, odwiedź stronę http://switchfromshapefile.org/.]
+Pomimo tych ograniczeń przez długi czas brakowało realnej alternatywy.
+W ostatnich latachpojawił się{GeoPackage}[GeoPackage](https://www.geopackage.org/)\\index, który wydaje się być więcej niż odpowiednim kandydatem do zastąpienia ESRI Shapefile.
+Geopackage to format służący do wymiany informacji geoprzestrzennych i standard OGC.
+Standard GeoPackage opisuje zasady przechowywania informacji geoprzestrzennych w niewielkim kontenerze SQLite.GeoPackage
+jest zatem lekkim kontenerem bazy danych przestrzennych, który umożliwia przechowywanie danych wektorowych i rastrowych, ale także danych nieprzestrzennych i rozszerzeń.
+Oprócz GeoPackage istnieją inne formaty wymiany danych geoprzestrzennych, które warto sprawdzić (Tabela @ref(tab:formats)).
+
+\\index{GeoTIFF}
+\\index{COG}
+Format GeoTIFF wydaje się być najbardziej znanym formatem danych rastrowych.Pozwala
+on na osadzenie informacji przestrzennych, takich jak CRS, w pliku TIFF.
+Podobnie jak ESRI Shapefile, format ten został po raz pierwszy opracowany w latach 90. XX wieku, ale jako format otwarty.
+Ponadto format GeoTIFF jest nadal rozbudowywany i ulepszany.
+Jednym z najważniejszych ostatnich dodatków do formatu GeoTIFF jest jego wariant o nazwie[COG](https://www.cogeo.org/)(*Cloud Optimized GeoTIFF*).
+Obiekty rastrowe zapisane jako COG mogą być hostowane na serwerach HTTP, dzięki czemu inne osoby mogą odczytywać tylko fragmenty pliku bez konieczności pobierania całego pliku (patrz sekcje @ref(raster-data-read) i @ref(raster-data-write)).
+
+Istnieje wiele formatów plików geograficznych poza tymi przedstawionymi w tabeli @ref(tab:formats), a nowe formaty danych zdolne do reprezentowania danych geograficznych są w trakcie opracowywania.
+Najnowsze przykłady to formaty oparte naspecyfikacjach[GeoArrow](https://github.com/geoarrow/geoarrow)i[Zarr](https://zarr.dev/).
+Dokumentacja GDAL stanowi dobre źródło informacji na temat innychsterowników[wektorowych](https://gdal.org/drivers/vector/index.html)i[rastrowych](https://gdal.org/drivers/raster/index.html).
+Ponadto niektóre formaty danych mogą przechowywać inne modele danych (typy) poza modelami danych wektorowych i rastrowych przedstawionymi w sekcji @ref(intro-sf).
+Obejmuje to formaty LAS i LAZ do przechowywania chmur punktów lidarowych oraz NetCDF i HDF do przechowywania wielowymiarowych tablic.
+
+Dane przestrzenne są również często przechowywane przy użyciu tabelarycznych (nieprzestrzennych) formatów tekstowych, w tym plików CSV lub arkuszy kalkulacyjnych Excel.Może to
+być na przykład wygodne w przypadku udostępniania próbek przestrzennych osobom, które nie korzystają z narzędzi GIS, lub wymiany danych z innym oprogramowaniem, które nie akceptuje formatów danych przestrzennych.Podejście
+to ma jednak wady: utrudnia przechowywanie geometrii bardziej złożonych niż POINT i pomija ważne metadane przestrzenne, takie jak CRS.
+
+## Wprowadzanie danych (I){#data-input}
+
+Wykonanie poleceń takich jak`sf::read_sf()`(główna funkcja używana do ładowania danych wektorowych) lub`terra::rast()`(główna funkcja używana do ładowania danych rastrowych) po cichu uruchamia ciąg zdarzeń,które odczytują dane z plików.
+Wiele pakietów R zawiera przykładowe zbiory danych (np. zbiór`spData::world`danych  użyty we wcześniejszych rozdziałach) oraz funkcje umożliwiające pobieranie zbiorów danych geograficznych z różnych źródeł danych.
+Wszystkie one ładują dane do R lub, dokładniej, przypisują obiekty do obszaru roboczego.Oznacza
+to, że po zaimportowaniu obiektów do R są one przechowywane w pamięci RAM^\[Istnieją pewne wyjątki od tej reguły, np.obiekty`SpatRaster`**terra**(które są wskaźnikami C++ do rzeczywistych danych) oraz obiekty reprezentujące połączenia z bazą danych,które można zaimportować do pamięci za pomocą funkcji takich jak`dplyr::collect()`, jak opisano w sekcji @ref(postgis).\], można wyświetlić za pomocą`ls()`(i powinny być widoczne w panelach „Środowisko” w środowisku programistycznym) oraz można uzyskać do[`.GlobalEnv`](http://adv-r.had.co.nz/Environments.html)nich dostęp z  sesji R.
+
+### Dane{#iovec}wektorowe
+
+\\indexDane{vector!data input}
+wektorowe przestrzenne występują w wielu różnych formatach plików.
+Najpopularniejsze reprezentacje, takie jakpliki`.geojson``.gpkg`i, można importować bezpośrednio do języka R za pomocąfunkcji**sf**`read_sf()`(lub jej odpowiednika`st_read()`), któraw tlewykorzystuje{GDAL}[sterowniki wektorowe GDAL](https://gdal.org/drivers/vector/index.html)\\index.
+`st_drivers()`Funkcja zwraca ramkę danych zawierającą`name`i`long_name`w pierwszych dwóch kolumnach oraz cechy każdego sterownika dostępnego dla GDAL (a zatem również dla**sf**), w tym możliwość zapisywania danych i przechowywania danych rastrowych w kolejnych kolumnach, jak pokazano dla kluczowych formatów plików w tabeli @ref(tab:drivers).
+
+```{r drivers, echo=FALSE}
+sf_drivers = st_drivers() |>
+  dplyr::filter(name %in% c("ESRI Shapefile", "GeoJSON", "KML", "GPX", "GPKG", "FlatGeobuf")) |> 
+  tibble::as_tibble() # remove unhelpful row names
+knitr::kable(head(sf_drivers, n = 6),
+             caption = paste("Popular drivers/formats for reading/writing", 
+                             "vector data."),
+             caption.short = "Sample of available vector drivers.",
+             booktabs = TRUE) |> 
+  kableExtra::column_spec(2, width = "7em")
+```
+
+Poniższe polecenia pokazują pierwsze trzy sterowniki zgłoszone przez instalację GDAL na komputerze (wyniki mogą się różnić w zależności od zainstalowanej wersji GDAL) oraz podsumowanie ich funkcji.
+Należy zauważyć, że większość sterowników może zapisywać dane, podczas gdy tylko kilkanaście formatów może efektywnie reprezentować dane rastrowe oprócz danych wektorowych (szczegółowe informacjemożna`?st_drivers()`znaleźćw  ):
+
+```{r 07-read-write-plot-17, eval=FALSE}
+sf_drivers = st_drivers()
+head(sf_drivers, n = 3)
+summary(sf_drivers[-c(1:2)])
+```
+
+Pierwszym argumentem`read_sf()`jest`dsn`, który powinien być ciągiem tekstowym lub obiektem zawierającym pojedynczy ciąg tekstowy.
+Zawartość ciągu tekstowego może się różnić w zależności od sterownika.
+W większości przypadków, podobnie jak w przypadku formatu ESRI Shapefile\\{GeoPackage}index{Shapefile}(`.shp`) lubformatu`GeoPackage`\\index(`.gpkg`),  będzie`dsn`nazwą pliku.
+`read_sf()`odgaduje sterownik na podstawie rozszerzenia pliku, jak pokazanoponiżejdlapliku`.gpkg`:
+
+```{r 07-read-write-plot-19}
+f = system.file("shapes/world.gpkg", package = "spData")
+world = read_sf(f)
+```
+
+W przypadku niektórych`dsn`sterownikówmoże być podany jako nazwa folderu, poświadczenia dostępu do bazy danych lub reprezentacja ciągu GeoJSON (więcej szczegółówmożna znaleźć w przykładach nastronie`read_sf()`pomocy ).
+
+Niektóre formaty sterowników wektorowych mogą przechowywać wiele warstw danych.
+Domyślnie`read_sf()`automatycznie odczytuje pierwszą warstwę pliku określonego w`dsn`; jednak za pomocą`layer`argumentu  można określić dowolną inną warstwę.
+
+Funkcja{OGR SQL}
+`read_sf()`umożliwia również odczytanie tylko części pliku do pamięci RAM za pomocą dwóch możliwych mechanizmów.
+Pierwszy z nich jest związany zargumentem`query`, który pozwala określić, która część danych ma zostać odczytana za pomocą[tekstu zapytania OGR SQL](https://gdal.org/user/ogr_sql_dialect.html).Poniższy
+przykład wyodrębnia dane dotyczące wyłącznie Tanzanii (rysunek @ref(fig:readsfquery)A).
+Odbywa się to poprzez określenie, że chcemy uzyskać wszystkie kolumny (`SELECT *`) z`"world"`warstwy , dla której  jest`name_long`równe`"Tanzania"`:
+
+```{r}
+tanzania = read_sf(f, query = 'SELECT * FROM world WHERE name_long = "Tanzania"')
+```
+
+Jeśli nie znasz nazw dostępnych kolumn, dobrym rozwiązaniem jest po prostu przeczytanie jednego wiersza danych za pomocą`'SELECT * FROM world WHERE FID = 1'`.
+`FID`reprezentuje*identyfikator**obiektu*— najczęściej jest to numer wiersza, jednak jego wartości zależą od używanego formatu pliku.
+Na przykładzaczyna się od 0 w pliku`FID`ESRI Shapefile, od 1 w niektórych innych formatach plików lub może być nawet dowolny.
+
+```{r, eval=FALSE, echo=FALSE}
+read_sf(f, query = 'SELECT * FROM world WHERE FID = 0')
+```
+
+Drugi mechanizm wykorzystujeargument`wkt_filter`.Argument
+ten oczekuje dobrze znanego tekstu reprezentującego obszar badań, dla którego chcemy wyodrębnić dane.
+Wypróbujmy to na małym przykładzie — chcemy odczytać z naszego pliku wielokąty, które przecinają się z buforem 50 000 metrów granic Tanzanii.
+Aby to zrobić, musimy przygotować nasz „filtr” poprzez (a) utworzenie bufora (sekcja @ref(buffers)), (b) konwersjęobiektu`sf`bufora naobiekt`sfc`geometrii za`st_geometry()`pomocą  oraz (c) przetłumaczenie geometrii na ich dobrze znaną reprezentację tekstową za pomocą`st_as_text()`:
+
+```{r}
+tanzania_buf = st_buffer(tanzania, 50000)
+tanzania_buf_geom = st_geometry(tanzania_buf)
+tanzania_buf_wkt = st_as_text(tanzania_buf_geom)
+```
+
+Teraz możemy zastosować ten „filtr” za pomocą`wkt_filter`argumentu .
+
+```{r}
+tanzania_neigh = read_sf(f, wkt_filter = tanzania_buf_wkt)
+```
+
+Wynik, pokazany na rysunku @ref(fig:readsfquery)(B), zawiera Tanzanię i wszystkie kraje w obrębie jej bufora 50 km.
+
+```{r readsfquery, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Reading a subset of the vector data using (A) a query and (B) a wkt filter."}
+library(tmap)
+tm1 = tm_shape(tanzania) +
+  tm_polygons(lwd = 2) +
+  tm_text(text = "name_long") + 
+  tm_scalebar(c(0, 200, 400), position = c("left", "bottom")) +
+  tm_title("A. query")
+tanzania_neigh[tanzania_neigh$iso_a2 == "CD", "name_long"] = "Democratic\nRepublic\nof the Congo"
+tm2 = tm_shape(tanzania_neigh) +
+  tm_polygons() +
+  tm_text(text = "name_long", 
+          text.scale = tm_scale(auto.placement = FALSE, remove.overlap = FALSE), 
+          size = "area_km2", size.legend = tm_legend_hide(), 
+          size.scale = tm_scale_continuous(values = tm_seq(power = 1/6))) +
+  tm_shape(tanzania_buf) +
+  tm_polygons(col = "red", fill = "red", fill_alpha = 0.05) +
+  tm_add_legend(type = "polygons", labels = "50km buffer around Tanzania",
+                col = "red", fill_alpha = 0.1, fill = "red")  +
+  tm_scalebar(c(0, 200, 400), position = c("right", "bottom")) +
+  tm_title("B. wkt_filter") +
+  tm_layout(legend.position = c("LEFT", "BOTTOM"))
+tmap_arrange(tm1, tm2)
+```
+
+Oczywiście niektóre opcje są specyficzne dla określonych sterowników.^\[
+Lista obsługiwanych formatów wektorowych i opcji znajduje się na stronie https://gdal.org/ogr\_formats.html.
+\]
+Weźmy na przykład współrzędne zapisane w formacie arkusza kalkulacyjnego (`.csv`).
+Aby odczytać takie pliki jako obiekty przestrzenne, musimy oczywiście określić nazwy kolumn (`X`i`Y`w naszym przykładzie poniżej) reprezentujących współrzędne.
+Możemy to zrobić za pomocąparametru`options`.
+Aby dowiedzieć się więcej o możliwych opcjach, zapoznaj się z sekcją „Opcje otwierania” wopisieodpowiedniegosterownika{GDAL}GDAL\\index.
+W przypadku formatu wartości rozdzielanych przecinkami (csv) odwiedź[stronę](https://gdal.org/drv_csv.html)<https://gdal.org/drv_csv.html>.
+
+```{r 07-read-write-plot-20, results="hide"}
+cycle_hire_txt = system.file("misc/cycle_hire_xy.csv", package = "spData")
+cycle_hire_xy = read_sf(cycle_hire_txt,
+  options = c("X_POSSIBLE_NAMES=X", "Y_POSSIBLE_NAMES=Y"))
+```
+
+Zamiast kolumn opisujących współrzędne „XY”, pojedyncza kolumna może również zawierać informacje geometryczne.Przykładami tego
+są formatyWell-known text (WKT)\\index{well-known text}, well-known binary (WKB)\\indexoraz{well-known binary}GeoJSON.
+Na przykładplik`world_wkt.csv`  zawiera kolumnę o nazwie`WKT`reprezentującą wielokąty krajów świata.
+Ponownie użyjemyparametru`options`, aby to zaznaczyć.
+
+{KML}
+
+
+```{r 07-read-write-plot-21, results="hide"}
+world_txt = system.file("misc/world_wkt.csv", package = "spData")
+world_wkt = read_sf(world_txt, options = "GEOM_POSSIBLE_NAMES=WKT")
+```
+
+```{block2 07-read-write-plot-22, type="rmdnote"}
+Not all of the supported vector file formats store information about their coordinate reference system.
+In these situations, it is possible to add the missing information using the `st_set_crs()` function.
+Please refer also to Section \@ref(crs-setting) for more information.
+```
+
+Jako ostatni przykład pokażemy, jak`read_sf()`odczytuje również pliki KML.
+ Plik KML przechowuje informacje geograficzne w formacie XML, który jest formatem danych służącym do tworzenia stron internetowych i przesyłania danych w sposób niezależny od aplikacji [@nolan_xml_2014] .
+W tym przypadku uzyskujemy dostęp do pliku KML z internetu.Plik
+ten zawiera więcej niż jedną warstwę.
+`st_layers()`wyświetla wszystkie dostępne warstwy.
+Wybieramy pierwszą warstwę`Placemarks`i wskazujemy to za pomocąparametru`layer`  w`read_sf()`.
+
+```{r 07-read-write-plot-23, out.lines=6}
+u = "https://developers.google.com/kml/documentation/KML_Samples.kml"
+download.file(u, "KML_Samples.kml")
+st_layers("KML_Samples.kml")
+kml = read_sf("KML_Samples.kml", layer = "Placemarks")
+```
+
+Wszystkie przykłady przedstawione dotychczas w tej sekcji wykorzystywałypakiet**sf**do importu danych geograficznych.Jest
+on szybki i elastyczny, ale warto zapoznać się z innymi pakietami, takimi jak**duckdb**, interfejs R do systemu baz danych DuckDB, który posiada[rozszerzenie](https://duckdb.org/docs/extensions/spatial.html)[przestrzenne](https://duckdb.org/docs/extensions/spatial.html).
+
+### Dane{#raster-data-read}rastrowe
+
+\\index{raster!data input}
+Podobnie jak dane wektorowe, dane rastrowe występują w wielu formatach plików, a niektóre z nich obsługują pliki wielowarstwowe.
+Polecenie`rast()`**terra**odczytuje pojedynczą warstwę, gdy dostarczony jest plik zawierający tylko jedną warstwę.
+
+```{r 07-read-write-plot-24, message=FALSE}
+raster_filepath = system.file("raster/srtm.tif", package = "spDataLarge")
+single_layer = rast(raster_filepath)
+```
+
+Działa to również w przypadku, gdy chcesz odczytać plik wielowarstwowy.
+
+```{r 07-read-write-plot-25}
+multilayer_filepath = system.file("raster/landsat.tif", package = "spDataLarge")
+multilayer_rast = rast(multilayer_filepath)
+```
+
+\\index{vsicurl}
+\\index{GDAL}
+\\index{COG}
+Wszystkie poprzednie przykłady odczytują informacje przestrzenne z plików przechowywanych na dysku twardym.
+Jednak GDAL umożliwia również odczytywanie danych bezpośrednio ze źródeł internetowych, takich jak zasoby HTTP/HTTPS/FTP.
+Jedyne, co musimy zrobić, to dodaćprefiks`/vsicurl/`przed ścieżką do pliku.
+Spróbujmy to zrobić, łącząc się z globalnym miesięcznym prawdopodobieństwem opadów śniegu w rozdzielczości 500 m dla okresu 2000-2012.
+Prawdopodobieństwo opadów śniegu w grudniu jest przechowywane jako plik Cloud Optimized GeoTIFF (COG) (patrz sekcja @ref(file-formats)) na stronie[zenodo.org](https://zenodo.org/record/5774954/files/clm_snow.prob_esacci.dec_p.90_500m_s0..0cm_2000..2012_v2.0.tif).
+Aby odczytać plik online, wystarczy podać jego adres URL wraz z`/vsicurl/`prefiksem.
+
+Ze względu{COG}
+na to, że
+
+```{r, linewidth=80}
+myurl = paste0("/vsicurl/https://zenodo.org/record/5774954/files/",
+               "clm_snow.prob_esacci.dec_p.90_500m_s0..0cm_2000..2012_v2.0.tif")
+snow = rast(myurl)
+snow
+```
+
+dane wejściowe są w formacie COG, w rzeczywistości nie odczytujemy tego pliku do naszej pamięci RAM, ale tworzymy połączenie z nim bez uzyskiwania żadnych wartości.
+Jego wartości zostaną odczytane, jeśli zastosujemy dowolną operację opartą na wartościach (np.`crop()`lub`extract()`).Pozwala
+nam to również odczytać tylko niewielką część danych bez pobierania całego pliku.
+Na przykład możemy uzyskać prawdopodobieństwo opadów śniegu w grudniu w Reykjaviku (70%) poprzez określenie jego współrzędnych i zastosowaniefunkcji`extract()`:
+
+```{r}
+rey = data.frame(lon = -21.94, lat = 64.15)
+snow_rey = extract(snow, rey)
+snow_rey
+```
+
+W ten sposób pobraliśmy tylko jedną wartość zamiast całego, dużego pliku GeoTIFF.Powyższy
+przykład pokazuje tylko jeden prosty (ale użyteczny) przypadek, ale jest więcej do odkrycia.
+`/vsicurl/`Prefiks  działa nie tylko w przypadku formatów plików rastrowych, ale także wektorowych.
+Umożliwia on odczytanie wektorów bezpośrednio z pamięci online za`read_sf()`pomocąpoprzez dodanie prefiksu przed adresem URL pliku wektorowego.
+
+Co ważne,nie`/vsicurl/`jest jedynym prefiksem udostępnianym przez GDAL — istnieje wiele innych, takich jak`/vsizip/`do odczytu plików przestrzennych z archiwów ZIP bez konieczności ich uprzedniego dekompresowania lub`/vsis3/`do odczytu plików dostępnych w zasobnikach AWS S3 w locie.
+Więcej informacji na ten temat można znaleźć na[stronie](https://gdal.org/user/virtual_file_systems.html)<https://gdal.org/user/virtual_file_systems.html>.
+
+Podobnie jak dane wektorowe, zbiory danych rastrowych mogą być również przechowywane w niektórych przestrzennych bazach danych, w szczególności PostGIS, i odczytywane z nich.Więcej szczegółów
+można znaleźć w sekcji @ref(postgis).
+
+## Wyjście danych (O){#data-output}
+
+Zapisywanie danych geograficznych pozwala na konwersję z jednego formatu do innego oraz zapisywanie nowo utworzonych obiektów.
+W zależności od typu danych (wektorowych lub rastrowych), klasy obiektów (np.`sf`lub`SpatRaster`) oraz typu i ilości przechowywanych informacji (np. rozmiar obiektu, zakres wartości), ważne jest, aby wiedzieć, jak przechowywać pliki przestrzenne w najbardziej efektywny sposób.
+W kolejnych dwóch sekcjach zostanie pokazane, jak to zrobić.
+
+### Dane wektorowe
+
+\\index{vector!data output}
+
+```{r 07-read-write-plot-27, echo=FALSE, results="hide"}
+world_files = list.files(pattern = "world*")
+file.remove(world_files)
+```
+
+Odpowiednikiem`read_sf()`jest`write_sf()`.
+Umożliwia on zapisywanieobiektów**sf**w wielu formatach plików wektorowych danych geograficznych, w tym w najpopularniejszych,takich jak`.geojson`,`.shp`i`.gpkg`.
+Na podstawie nazwy plikuautomatycznie wybiera`write_sf()`sterownik,którego należy użyć.
+Szybkość procesu zapisu zależy również od sterownika.
+
+```{r 07-read-write-plot-28}
+write_sf(obj = world, dsn = "world.gpkg")
+```
+
+**Uwaga**: jeśli spróbujesz ponownie zapisać do tego samego źródła danych, funkcja nadpisze plik:
+
+```{r 07-read-write-plot-29, error=TRUE}
+write_sf(obj = world, dsn = "world.gpkg")
+```
+
+Zamiast nadpisywać plik, możemy dodać do niego nową warstwę, określającargument`layer`.Jest
+to obsługiwane przez kilka formatów przestrzennych, w tym GeoPackage.
+
+```{r 07-read-write-plot-31, results="hide"}
+write_sf(obj = world, dsn = "world_many_layers.gpkg", layer = "second_layer")
+```
+
+Alternatywnie można użyć`st_write()`ponieważ jest to równoważne z`write_sf()`.Ma ono
+jednak inne ustawienia domyślne — nie nadpisuje plików (zwraca błąd, gdy spróbujesz to zrobić) i wyświetla krótkie podsumowanie zapisanego formatu pliku i obiektu.
+
+```{r 07-read-write-plot-32}
+st_write(obj = world, dsn = "world2.gpkg")
+```
+
+Argument`layer_options`  może być również używany do wielu różnych celów.
+Jednym z nich jest zapisanie danych przestrzennych do pliku tekstowego.
+Można to zrobić, określając`GEOMETRY`wewnątrz`layer_options`.Może
+to byćdla prostych zbiorów danych punktowych (`AS_XY`tworzy dwie nowe kolumny dla współrzędnych) lub`AS_WKT`dla bardziej złożonych danych przestrzennych (tworzona jest jedna nowa kolumna zawierająca dobrze znaną tekstową reprezentację obiektów przestrzennych).
+
+```{r 07-read-write-plot-33, eval=FALSE}
+write_sf(cycle_hire_xy, "cycle_hire_xy.csv", layer_options = "GEOMETRY=AS_XY")
+write_sf(world_wkt, "world_wkt.csv", layer_options = "GEOMETRY=AS_WKT")
+```
+
+```{r, echo=FALSE, results="hide"}
+file.remove(world_files)
+```
+
+### Dane{#raster-data-write}rastrowe
+
+\\index{raster!data output}
+Funkcja`writeRaster()`  zapisuje`SpatRaster`obiekty do plików na dysku.
+Funkcja oczekuje danych wejściowych dotyczących typu danych wyjściowych i formatu pliku, ale akceptuje również opcje GDAL specyficzne dla wybranego formatu pliku (więcej szczegółówmożna`?writeRaster`znaleźćw  ).
+
+index{raster!data types}
+Pakiet**terra**oferuje siedem typów danych podczas zapisywania rastra: INT1U, INT2S, INT2U, INT4S, INT4U, FLT4S i FLT8S,^\[Nie zaleca
+się używania INT4U, ponieważ R nie obsługuje 32-bitowych liczb całkowitych bez znaku.
+\] które określają reprezentację bitową obiektu rastrowego zapisanego na dysku (Tabela @ref(tab:datatypes)).
+Wybór typu danych zależy od zakresu wartości obiektu rastrowego.
+Im więcej wartości może reprezentować typ danych, tym większy będzie plik na dysku.
+Liczby całkowite bez znaku (INT1U, INT2U, INT4U) są odpowiednie dla danych kategorycznych, natomiast liczby zmiennoprzecinkowe (FLT4S i FLT8S) zazwyczaj reprezentują dane ciągłe.
+`writeRaster()`domyślnie używa FLT4S.
+Chociaż w większości przypadków takie rozwiązanie sprawdza się, rozmiar pliku wyjściowego będzie niepotrzebnie duży, jeśli zapisujesz dane binarne lub kategoryczne.
+Dlatego zalecamy użycie typu danych, który wymaga najmniej miejsca na dysku, ale nadal jest w stanie reprezentować wszystkie wartości (sprawdź zakres wartości za`summary()`pomocąfunkcji ).
+
+```{r datatypes, echo=FALSE}
+dT = tibble::tribble(
+               ~`Data Type`,      ~`Minimum Value`,        ~`Maximum Value`,
+               "INT1U",                     "0",                   "255",
+               "INT2S",               "--32,767",                "32,767",
+               "INT2U",                     "0",                "65,534",
+               "INT4S",        "--2,147,483,647",         "2,147,483,647",
+               "INT4U",                     "0",         "4,294,967,296",
+               "FLT4S",              "--3.4e+38",               "3.4e+38",
+               "FLT8S",             "--1.7e+308",              "1.7e+308"
+  )
+knitr::kable(dT, caption = "Data types supported by the terra package.",
+             caption.short = "Data types supported by the terra package.",
+             booktabs = TRUE)
+```
+
+Domyślnie format pliku wyjściowego jest pochodną nazwy pliku.
+Nazwanie pliku`*.tif`spowoduje utworzenie pliku GeoTIFF, jak pokazano poniżej:
+
+```{r 07-read-write-plot-34, eval=FALSE}
+writeRaster(single_layer, filename = "my_raster.tif", datatype = "INT2U")
+```
+
+Niektóre formaty plików rastrowych mają dodatkowe opcje, które można ustawić, podając[parametry GDAL](https://gdal.org/formats_list.html)w`options`argumencie`writeRaster()`.Pliki
+GeoTIFF sądomyślniezapisywane w**formacie terra**z kompresją LZW`gdal = c("COMPRESS=LZW")`.
+Aby zmienić lub wyłączyć kompresję, musimy zmodyfikować ten argument.
+
+```{r 07-read-write-plot-35, eval=FALSE}
+writeRaster(x = single_layer, filename = "my_raster.tif",
+            gdal = c("COMPRESS=NONE"), overwrite = TRUE)
+```
+
+Dodatkowo możemy zapisać nasz obiekt rastrowy jako COG (Cloud{COG}
+Optimized GeoTIFF, sekcja @ref(formaty plików)) za pomocą`filetype = "COG"`opcji .
+
+```{r 07-read-write-plot-35b, eval=FALSE}
+writeRaster(x = single_layer, filename = "my_raster.tif",
+            filetype = "COG", overwrite = TRUE)
+```
+
+Aby dowiedzieć się więcej na temat kompresji plików GeoTIFF, polecamy[obszerny wpis na blogu](https://blog.cleverelephant.ca/2015/02/geotiff-compression-for-dummies.html)Paula Ramseya[, GeoTiff Compression for Dummies,](https://blog.cleverelephant.ca/2015/02/geotiff-compression-for-dummies.html)który można znaleźć w Internecie.
+
+## Geoportale{#retrieving-data}
+
+\\indexW Internecie dostępna{open data}
+jest ogromna i stale rosnąca ilość danych geograficznych, z których większość jest bezpłatna (pod warunkiem podania odpowiednich źródeł).^\[Na przykładna[stronie freegisdata.rtwilson.com](https://freegisdata.rtwilson.com/)znajduje siędługa lista stron internetowych z bezpłatnymi zbiorami danych geograficznych\].
+W pewnym sensie obecniedostępnychjest*zbyt wiele*danych, ponieważ często istnieje wiele miejsc, w których można uzyskać dostęp do tego samego zbioru danych.
+Niektóre zbiory danych są niskiej jakości.
+W tym kontekście ważne jest, aby wiedzieć, gdzie szukać, dlatego w pierwszej sekcji omówiono niektóre z najważniejszych źródeł.
+Różne „geoportale” (usługi internetowe udostępniające zbiory danych geoprzestrzennych, takie jak[Data.gov](https://catalog.data.gov/dataset?metadata_type=geospatial)) są dobrym punktem wyjścia, ponieważ zapewniają szeroki zakres danych, ale często tylko dla określonych lokalizacji (jak pokazano na zaktualizowanej[stronie Wikipedii](https://en.wikipedia.org/wiki/Geoportal)poświęconej temu tematowi).
+
+{geoportals}
+Niektóre globalne geoportale rozwiązują ten problem.Na przykład
+[portal](https://www.geoportal.org/)[GEOSS](https://www.geoportal.org/)i[Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/)zawierają wiele zbiorów danych rastrowych o zasięgu globalnym.
+Bogate zbiory danych wektorowych są dostępne naportalu[SEDAC](https://sedac.ciesin.columbia.edu/)prowadzonym przez Narodową Agencję Aeronautyki i Przestrzeni Kosmicznej (NASA) oraz[geoportalu INSPIRE](http://inspire-geoportal.ec.europa.eu/)Unii Europejskiej, obejmujących obszar globalny i regionalny.
+
+Większość geoportali zapewnia interfejs graficzny umożliwiający wyszukiwanie zbiorów danych na podstawie takich cech, jak zasięg przestrzenny i czasowy,czego doskonałym przykładem jest[EarthExplorer](https://earthexplorer.usgs.gov/)amerykańskiej służby geologicznej (United States Geological Survey).
+Interaktywne*przeglądanie*zbiorów danych w przeglądarce jest skutecznym sposobem zrozumienia dostępnych warstw.Jednak z punktu widzenia
+powtarzalności i wydajności najlepiej jest*pobierać*dane za pomocą kodu.
+Pobieranie można zainicjować z wiersza poleceń przy użyciu różnych technik, głównie poprzez adresy URL i API\\index{API}(patrz na przykład[API](https://dataspace.copernicus.eu/analyse/apis)[Copernicus](https://dataspace.copernicus.eu/analyse/apis) ).^ [Przykład wykorzystania STAC-API do pobrania danych Sentinel-2 znajduje się w sekcji @ref(staccog).]
+Pliki hostowane na statycznych adresach URL można pobrać za pomocą`download.file()`, jak pokazano w poniższym fragmencie kodu, który uzyskuje dostęp do PeRL: Permafrost Region Pond and Lake Database z[pangaea.de](https://doi.pangaea.de/10.1594/PANGAEA.868349):
+
+```{r 07-read-write-plot-2, eval=FALSE}
+download.file(url = "https://hs.pangaea.de/Maps/PeRL/PeRL_permafrost_landscapes.zip",
+              destfile = "PeRL_permafrost_landscapes.zip", 
+              mode = "wb")
+unzip("PeRL_permafrost_landscapes.zip")
+canada_perma_land = read_sf("PeRL_permafrost_landscapes/canada_perma_land.shp")
+```
+
+## Pakiety danych geograficznych
+
+\\indexOpracowano{data packages}
+wiele pakietów R umożliwiających dostęp do danych geograficznych, z których część przedstawiono w tabeli @ref(tab:datapackages).Zapewniają
+one interfejsy do jednej lub kilku bibliotek przestrzennych lub geoportali i mają na celu jeszcze szybszy dostęp do danych z poziomu wiersza poleceń.
+
+```{r datapackages, echo=FALSE, warning=FALSE}
+datapackages = tibble::tribble(
+  ~`Package`, ~Description,
+  "climateR", "Access over 100,000 gridded climate and landscape datasets from over 2,000 data providers by area of interest.",
+  "elevatr", "Access point and raster elevation data from various sources.",
+  "FedData", "Datasets maintained by the US federal government, including elevation and land cover.",
+  "geodata", "Download and import imports administrative, elevation, WorldClim data.",
+  "osmdata", "Download and import small OpenStreetMap datasets.",
+  "osmextract", "Download and import large OpenStreetMap datasets.",
+  "rnaturalearth", "Access Natural Earth vector and raster data.",
+  "rnoaa", "Import National Oceanic and Atmospheric Administration (NOAA) climate data."
+)
+knitr::kable(datapackages, 
+             caption = "Selected R packages for geographic data retrieval.", 
+             caption.short = "Selected R packages for geographic data retrieval.",
+             booktabs = TRUE) |> 
+  kableExtra::column_spec(1, width = "5em") |> 
+  kableExtra::column_spec(2, width = "22em")
+```
+
+<!-- inne opcje: -->
+
+<!-- https://github.com/ErikKusch/KrigR -->
+
+<!-- https://github.com/VeruGHub/easyclimate -->
+
+<!-- https://github.com/ropensci/MODIStsp -->
+
+<!-- https://github.com/ropensci/rsat -->
+
+<!-- https://onlinelibrary.wiley.com/doi/10.1111/ecog.06768-->
+
+Należy podkreślić, że tabela @ref(tab:datapackages) przedstawia jedynie niewielką część dostępnych pakietów danych geograficznych.
+Na przykład istnieje wiele pakietów R służących do pozyskiwania różnych danych socjodemograficznych, takich jak**tidycensus**i**tigris**(USA),  **cancensus**(Kanada),**eurostat**i**giscoR**(Unia Europejska) lub**idbr**(międzynarodowe bazy danych) — przeczytaj[artykuł Analiza danych spisu ludności](https://walker-data.com/census-r/)
+      \[@walker\_analyzing\_2022\]
+    [Stanów Zjednoczonych](https://walker-data.com/census-r/), aby zapoznać się z przykładami analizy takich danych.
+Podobnie istnieje kilka pakietów R umożliwiających dostęp do danych przestrzennych dla różnych regionów i krajów, takich jak**bcdata**(prowincja Kolumbia Brytyjska),**geobr**(Brazylia),**RCzechia**(Czechy) lub**rgugik**(Polska).
+
+Każdy pakiet danych ma własną składnię dostępu do danych.
+ Ta różnorodność została pokazana w poniższych fragmentach kodu, które pokazują, jak uzyskać dane przy użyciu trzech pakietów z tabeli @ref(tab:datapackages).^ [Więcej przykładów pobierania danych przy użyciu dedykowanych pakietów R można znaleźć na stronie https://rspatialdata.github.io/.]
+Granice państw są często przydatne i można uzyskać do nich dostęp za`ne_countries()`pomocąfunkcji  z pakietu
+      \[@R\]
+    **rnaturalearth** [-rnaturalearth] w następujący sposób:
+
+```{r 07-read-write-plot-3}
+library(rnaturalearth)
+usa_sf = ne_countries(country = "United States of America", returnclass = "sf")
+```
+
+Granice państw można również uzyskać za pomocą innych pakietów, takich jak**geodata**,**giscoR**lub**rgeoboundaries**.
+
+Drugi przykład pobiera serię rastrów zawierających globalne miesięczne sumy opadów o rozdzielczości przestrzennej 10 minut (~18,5 km na równiku) przy użyciu pakietu
+      \[@R\]
+    **geodata** [-geodata] .
+Wynikiem jest wielowarstwowy obiekt klasy`SpatRaster`.
+
+```{r 07-read-write-plot-5, eval=FALSE}
+library(geodata)
+worldclim_prec = worldclim_global("prec", res = 10, path = tempdir())
+class(worldclim_prec)
+```
+
+Trzeci przykład wykorzystuje pakiet**osmdata** [@R-osmdata] do wyszukiwania parków z bazy danych OpenStreetMap (OSM) \index{OpenStreetMap}.
+Jak pokazano w poniższym fragmencie kodu, zapytania rozpoczynają się od funkcji`opq()`(skrót od OpenStreetMap query), której pierwszym argumentem jest prostokąt ograniczający lub ciąg tekstowy reprezentujący prostokąt ograniczający (w tym przypadku miasto Leeds).
+Wynik jest przekazywany do funkcji wybierającej elementy OSM, które nas interesują (w tym przypadku parki), reprezentowane przez*pary klucz-wartość*.
+Następnie są one przekazywane do funkcji ,`osmdata_sf()`która pobiera dane i konwertuje je na listęobiektów`sf`  (więcej szczegółówmożna`vignette('osmdata')`znaleźćw  ):
+
+```{r 07-read-write-plot-6, eval=FALSE}
+library(osmdata)
+parks = opq(bbox = "leeds uk") |> 
+  add_osm_feature(key = "leisure", value = "park") |> 
+  osmdata_sf()
+```
+
+Ograniczeniempakietu**osmdata**jestto, że ma on*ograniczoną przepustowość*, co oznacza, że nie może pobierać dużych zbiorów danych OSM (np. wszystkich danych OSM dla dużego miasta).
+Aby pokonać to ograniczenie,opracowano pakiet**osmextract**, który może być używany do pobierania i importowaniaplików`.pbf`binarnychzawierających skompresowane wersje bazy danych OSM dla wcześniej zdefiniowanych regionów.
+
+OpenStreetMap to ogromna globalna baza danych tworzona przez społeczność, która codziennie się powiększa i posiada szeroki ekosystem narzędzi umożliwiających łatwy dostęp do danych, odusługi internetowej[Overpass turbo](https://overpass-turbo.eu/)do szybkiego tworzenia i testowania zapytań OSM po[osm2pgsql](https://osm2pgsql.org/)do importowania danych do bazy danych PostGIS.
+Chociaż jakość zbiorów danych pochodzących z OSM jest różna, źródło danych i szersze ekosystemy OSM mają wiele zalet: zapewniają zbiory danych, które są dostępne na całym świecie, bezpłatne i stale ulepszane dzięki armii wolontariuszy.
+Korzystanie z OSM zachęca do „nauki obywatelskiej” i wnoszenia wkładu do cyfrowych dóbr wspólnych (możesz zacząć edytować dane przedstawiające część świata, którą dobrze znasz, na stronie[www.openstreetmap.org](https://www.openstreetmap.org)).
+Dalsze przykłady wykorzystania danych OSM przedstawiono w rozdziałach @ref(gis), @ref(transport) i @ref(location).
+
+<!-- system.time({zion_lc = climateR::getNLCD(zion, year = 2019)}) -->
+
+Czasami pakiety zawierają wbudowane zbiory danych.
+Dostęp do nich można uzyskać na cztery sposoby: poprzez dołączenie pakietu (jeśli pakiet wykorzystuje „leniwe ładowanie”,tak jak**spData**), za`data(dataset, package = mypackage)`pomocą, poprzez odwołanie się do zbioru danych za`mypackage::dataset`pomocą  lub za pomocą`system.file(filepath, package = mypackage)`w celu uzyskania dostępu do plików z surowymi danymi.
+Poniższy fragment kodu ilustruje dwie ostatnie opcje przy użyciu`world`zbiorudanych  (już załadowanego poprzez dołączenie pakietu nadrzędnego za pomocą`library(spData)`):^\[
+Więcej informacji na temat importowania danych za pomocą pakietów R można znaleźć w sekcjach 5.5 i 5.6 @gillespie\_efficient\_2016.
+\]
+
+```{r 07-read-write-plot-7, eval=FALSE}
+world2 = spData::world
+world3 = read_sf(system.file("shapes/world.gpkg", package = "spData"))
+```
+
+Ostatni przykład,`system.file("shapes/world.gpkg", package = "spData")`, zwraca ścieżkę dopliku`world.gpkg`, który jest przechowywany wfolderze`"shapes/"`  pakietu**spData**.
+
+\\index{geocoding}
+Innym sposobem uzyskania informacji przestrzennych jest geokodowanie — przekształcenie opisu lokalizacji, zazwyczaj adresu, na jej współrzędne.Zazwyczaj
+odbywa się to poprzez wysłanie zapytania do serwisu internetowego i uzyskanie lokalizacji jako wyniku.
+Istnieje wiele takich serwisów, które różnią się między sobą metodą geokodowania, ograniczeniami użytkowania, kosztami lub wymaganiami dotyczącymi klucza interfejsu programowania aplikacji (API).
+R posiada kilka pakietów do geokodowania, jednak**tidygeocoder**wydaje się umożliwiać połączenie z[największą liczbą serwisów geokodujących](https://jessecambon.github.io/tidygeocoder/articles/geocoder_services.html)za pomocą spójnego interfejsu.
+Główną funkcją**tidygeocoder**jest`geocode`, która pobiera ramkę danych z adresami i dodaje współrzędne jako`"lat"`i`"long"`.
+Funkcja ta pozwala również wybrać usługę geokodowania za pomocą`method`argumentu  i ma wiele dodatkowych parametrów.
+
+Wypróbujmy ten pakiet, wyszukując współrzędne niebieskiej tablicy pamiątkowej Johna Snowa umieszczonej na budynku w dzielnicy Soho w Londynie.
+
+```{r, eval=FALSE}
+library(tidygeocoder)
+geo_df = data.frame(address = "54 Frith St, London W1D 4SJ, UK")
+geo_df = geocode(geo_df, address, method = "osm")
+geo_df
+```
+
+Wynikową ramkę danych można przekonwertować naobiekt`sf`  za pomocą`st_as_sf()`.
+
+```{r, eval=FALSE}
+geo_sf = st_as_sf(geo_df, coords = c("long", "lat"), crs = "EPSG:4326")
+```
+
+**tidygeocoder**pozwala również na wykonanie odwrotnego procesu zwanego odwrotnym geokodowaniem, służącego do uzyskania zestawu informacji (nazwa, adres itp.) na podstawie pary współrzędnych.Dane
+geograficzne można również importować do R z różnych „mostów” do oprogramowania geograficznego, jak opisano w rozdziale @ref(gis).
+
+## Metadane geograficzne
+
+Metadane geograficzne\\indeks{geographic metadata}są podstawą zarządzania informacjami geograficznymi, wykorzystywane do opisywania zbiorów danych, struktur danych i usług.
+Pomagają one zapewnić zgodność zbiorów danych z zasadami FAIR (Findable, Accessible, Interoperable, Reusable – możliwe do znalezienia, dostępne, interoperacyjne, możliwe do ponownego wykorzystania) i są zdefiniowane przez normy ISO/OGC, w szczególności normę ISO 19115 i podstawowe schematy.
+Normy te są szeroko stosowane w infrastrukturach danych przestrzennych, obsługiwanych za pomocą katalogów metadanych.
+
+Metadanymi geograficznymi można zarządzać za pomocąpakietu**geometa**, który umożliwia zapisywanie, odczytywanie i sprawdzanie poprawności metadanych geograficznych zgodnie z normami ISO/OGC.
+Obsługuje on już różne międzynarodowe standardy dotyczące informacji metadanych geograficznych, takie jak ISO 19110 (katalog obiektów), starsze normy ISO 19115-1 i 19115-2 (metadane geograficzne dla zbiorów danych wektorowych i siatkowych/obrazowych), ISO 19115-3, ISO 19119 (metadane geograficzne dla usług) oraz ISO 19136 (Geographic Markup Language), zapewniając metody odczytu, walidacji i zapisu metadanych geograficznych z języka R przy użyciu specyfikacji technicznych ISO/TS 19139 (XML) i ISO 19115-3.
+
+Metadane geograficzne można tworzyć za pomocą**geometa**w następujący sposób, który tworzy i zapisuje plik metadanych:
+
+```{r 07-read-write-plot-m5, eval=FALSE}
+library(geometa)
+# create a metadata
+md = ISOMetadata$new()
+#... fill the metadata 'md' object
+# validate metadata
+md$validate()
+# XML representation of the ISOMetadata
+xml = md$encode()
+# save metadata
+md$save("my_metadata.xml")
+# read a metadata from an XML file
+md = readISO19139("my_metadata.xml")
+```
+
+Pakiet zawiera więcej[przykładów](https://github.com/eblondel/geometa/tree/master/inst/extdata/examples)i został rozszerzony o pakiety takie jak**[geoflow](https://github.com/r-geoflow/geoflow)**
+
+,
+
+aby ułatwić i zautomatyzować zarządzanie metadanymi.
+
+W dziedzinie standardowego zarządzania informacjami geograficznymi rozróżnienie między danymi a metadanymi jest mniej wyraźne.Na przykład standard i format
+pliku Geography Markup Language (GML) obejmuje zarówno dane, jak i metadane.
+Pakiet**geometa**umożliwia eksportowanie obiektów GML (ISO 19136) z obiektów geometrycznych modelowanych za pomocą**sf**.
+Taka funkcjonalność pozwala na wykorzystanie metadanych geograficznych (umożliwiając na przykład włączenie metadanych dotyczących szczegółowych zasięgów geograficznych i czasowych, a nie tylko prostych obwiedni) oraz świadczenie usług rozszerzających standard GML (np. Open Geospatial Consortium Web Coverage Service, OGC-WCS).
+
+## Geograficzne usługi internetowe
+
+\\index{geographic web services}
+W celu standaryzacji internetowych interfejsów API służących do uzyskiwania dostępu do danych przestrzennych, Open Geospatial Consortium (OGC) stworzyło szereg standardowych specyfikacji dla usług internetowych (znanych pod wspólną nazwą OWS, co jest skrótem od OGC Web Services).
+Usługi te uzupełniają i wykorzystują podstawowe standardy opracowane w celu modelowania informacji geograficznych, takie jak[ISO/OGC Spatial Schema (ISO 19107:2019)](https://www.iso.org/standard/66175.html)lub[Simple Features (ISO 19125-1:2004)](https://www.iso.org/standard/40114.html), oraz formatowania danych, np. za pomocą[Geographic Markup Language (GML)](https://www.iso.org/standard/75676.html).
+Specyfikacje te obejmują wspólne usługi dostępu do danych i metadanych.
+Dostęp do danych wektorowych można uzyskać za pomocą usługi Web Feature Service (WFS)\\index{geographic web services!WFS}, natomiast dostęp do siatki/obrazów można uzyskać za pomocą usługi Web Coverage Service (WCS)\\index{geographic web services!WCS}.Dostęp do
+reprezentacji obrazów map, takich jak kafelki, można uzyskać za pomocą usługi Web Map Service (WMS)\\index{geographic web services!WMS}lub Web Map Tile Service (WMTS)\\index{geographic web services!WMTS}.
+Metadane są również obsługiwane za pomocą usługi katalogowej dla sieci WWW (CSW)\\index{geographic web services!CSW}.
+Wreszcie, standardowe przetwarzanie jest obsługiwane za pośrednictwem usługi przetwarzania sieciowego (WPS)\\index{geographic web services!WPS}lub usługi przetwarzania pokrycia sieciowego (WCPS)\\index{geographic web services!WCPS}.
+
+Różne projekty open source przyjęły te protokoły, takie jak[GeoServer](https://geoserver.org/)i[MapServer](https://mapserver.org/)do obsługi danych lub[GeoNetwork](https://geonetwork-opensource.org/)i[PyCSW](https://pycsw.org/)do obsługi metadanych, co doprowadziło do standaryzacji zapytań.
+Zintegrowane narzędzia dla infrastruktur danych przestrzennych (SDI), takie jak[GeoNode](https://geonode.org/),[GeOrchestra](https://www.georchestra.org/)lub[Examind](https://www.examind.com/), również przyjęły te standardowe usługi internetowe, bezpośrednio lub przy użyciu wspomnianych wcześniej narzędzi open source.
+
+Podobnie jak inne interfejsy API sieci Web, interfejsy API OWS używają „podstawowego adresu URL”, „punktu końcowego” i „argumentów zapytania URL” zgodnie`?`zw celu żądania danych (zobacz  [`best-practices-api-packages`](https://httr.r-lib.org/articles/api-packages.html)winietę wpakiecie**httr**).
+
+Istnieje wiele żądań, które można wysłać do usługi OWS. Poniższe przykłady ilustrują, jak niektóre żądania można wysłać bezpośrednio za pomocą**httr**lub w prostszy sposób za pomocąpakietu**ows4R**(OGC Web-Services for R).
+
+Zacznijmy od przykładów wykorzystującychpakiet**httr**, które mogą być przydatne do zrozumienia działania usług internetowych.
+Jednym z najbardziej podstawowych żądań jest`getCapabilities`, zademonstrowaneponiżejza pomocą`modify_url()`funkcji**httr**`GET()`i.
+Poniższy fragment kodu pokazuje,jakmożna skonstruować i wysłać zapytania{API}API\\index, w tym przypadku w celu odkrycia możliwości usługi prowadzonej przez Wydział Rybołówstwa i Akwakultury Organizacji Narodów Zjednoczonych ds. Wyżywienia i Rolnictwa (UN-FAO).
+
+```{r 07-read-write-plot-8}
+library(httr)
+base_url = "https://www.fao.org"
+endpoint = "/fishery/geoserver/wfs"
+q = list(request = "GetCapabilities")
+res = GET(url = modify_url(base_url, path = endpoint), query = q)
+res$url
+```
+
+Powyższy fragment kodu pokazuje, jakmożna programowo konstruować żądania{API}API\\indexza`GET()`pomocąfunkcji , która przyjmuje podstawowy adres URL i listę parametrów zapytania, którą można łatwo rozszerzyć.
+Wynik żądania jest zapisywany w`res`, obiekcie klasy`response`zdefiniowanym wpakiecie**httr**, który jest listą zawierającą informacje o żądaniu, w tym adres URL.
+Jak widać po wykonaniu`browseURL(res$url)`, wyniki można również odczytać bezpośrednio w przeglądarce.
+Jednym ze sposobów wyodrębnienia zawartości żądania jest następujący:
+
+```{r 07-read-write-plot-9, eval=FALSE}
+txt = content(res, "text")
+xml = xml2::read_xml(txt)
+xml
+#> {xml_document} ...
+#> [1] <ows:ServiceIdentification>\n  <ows:Title>GeoServer WFS...
+#> [2] <ows:ServiceProvider>\n  <ows:ProviderName>UN-FAO Fishe...
+#> ...
+```
+
+Dane można pobrać z usług WFS za pomocą`GetFeature`żądania  i określonego`typeName`(jak pokazano w poniższym fragmencie kodu).
+
+```{r 07-read-write-plot-11, echo=FALSE, eval=FALSE}
+library(XML)
+library(curl)
+library(httr)
+base_url = "https://www.fao.org/fishery/geoserver/wfs"
+q = list(request = "GetCapabilities")
+res = GET(url = base_url, query = q)
+doc = xmlParse(res)
+root = xmlRoot(doc)
+names(root)
+names(root[["FeatureTypeList"]])
+root[["FeatureTypeList"]][["FeatureType"]][["Name"]]
+tmp = xmlSApply(root[["FeatureTypeList"]], function(x) xmlValue(x[["Name"]]))
+```
+
+Dostępne nazwy różnią się w zależności od usługi funkcji internetowej, do której uzyskano dostęp.
+ Można je wyodrębnić programowo za pomocą technologii [@nolan_xml_2014] internetowych lub ręcznie przewijając zawartość`GetCapabilities`wyjścia w przeglądarce.
+
+```{r 07-read-write-plot-12, eval=FALSE}
+library(sf)
+sf::sf_use_s2(FALSE)
+qf = list(request = "GetFeature", typeName = "fifao:FAO_MAJOR")
+file = tempfile(fileext = ".gml")
+GET(url = base_url, path = endpoint, query = qf, write_disk(file))
+fao_areas = read_sf(file)
+```
+
+Aby zachować poprawność geometrii w całym łańcuchu dostępu do danych, a także ponieważ standardy i podstawowe rozwiązania serwerowe typu open source (takie jak GeoServer) zostały zbudowane w oparciu o dostęp do funkcji Simple Features, ważne jest,aby wyłączyć nowe domyślne zachowanie wprowadzone w**sf**i nie używać modelu geometrii S2 podczas dostępu do danych.
+Można to zrobić za pomocą powyższego kodu`sf::sf_use_s2(FALSE)`.Należy
+również zwrócić uwagę na użycie`write_disk()`w celu zapewnienia, że wyniki zostaną zapisane na dysku, a nie załadowane do pamięci, co pozwoli na ich importowanie za pomocą**sf**.
+
+Jednak w przypadku wielu codziennych zadań bardziej odpowiedni może być interfejs wyższego poziomu i właśnie w tym celu opracowano szereg pakietów R oraz samouczków.
+Pakiet**ows4R**został opracowany do pracy z usługami OWS.
+Zapewnia stabilny interfejs do popularnych usług dostępowych, takich jak WFS, WCS dla danych, CSW dla metadanych i WPS dla przetwarzania.
+Zakres usług OGC opisano w pliku README pakietu, umieszczonym na stronie[github.com/eblondel/ows4R](https://github.com/eblondel/ows4R?tab=readme-ov-file#ogc-standards-coverage-status), a nowe standardowe protokoły są obecnie badane/opracowywane.
+
+Na podstawie powyższego przykładu poniższy kod pokazuje, jak wykonaćoperacje`getCapabilities``getFeatures`iza pomocą tego pakietu.
+Pakiet**ows4R**opiera się na zasadzie klientów.
+Aby nawiązać interakcję z usługą OWS (taką jak WFS), tworzy się klienta w następujący sposób:
+
+```{r 07-read-write-plot-12b, eval=FALSE}
+library(ows4R)
+WFS = WFSClient$new(
+  url = "https://www.fao.org/fishery/geoserver/wfs",
+  serviceVersion = "1.0.0",
+  logger = "INFO"
+)
+```
+
+Operacje są następnie dostępne z poziomu tego obiektu klienta, np.`getCapabilities`lub`getFeatures`.
+
+```{r 07-read-write-plot-12c, eval=FALSE}
+library(ows4R)
+caps = WFS$getCapabilities()
+features = WFS$getFeatures("fifao:FAO_MAJOR")
+```
+
+Jak wyjaśniono wcześniej, podczas uzyskiwania dostępu do danych za pomocą usług OGC obsługafunkcji**sf**powinna odbywać się poprzez dezaktywację nowego domyślnego zachowania wprowadzonego w**sf**za pomocą`sf::sf_use_s2(FALSE)`.Jest
+to domyślnie realizowane przez**ows4R**.
+
+Dodatkowe przykłady są dostępne w winietach, np.[jak uzyskać dostęp do danych rastrowych za pomocą WCS](https://cran.r-project.org/web/packages/ows4R/vignettes/wcs.html)lub[jak uzyskać dostęp do metadanych za pomocą CSW](https://cran.r-project.org/web/packages/ows4R/vignettes/csw.html).
+
+## Wyniki wizualne
+
+\\index{map-making!outputs}
+R obsługuje wiele różnych formatów grafiki statycznej i interaktywnej.
+Rozdział @ref(adv-map) szczegółowo omawia tworzenie map, ale warto wspomnieć tutaj o sposobach wyświetlania wizualizacji.
+Najbardziej ogólną metodą zapisywania statycznego wykresu jest otwarcie urządzenia graficznego, utworzenie wykresu i zamknięcie go, na przykład:
+
+```{r 07-read-write-plot-36, eval=FALSE}
+png(filename = "lifeExp.png", width = 500, height = 350)
+plot(world["lifeExp"])
+dev.off()
+```
+
+Inne dostępne urządzenia graficzne to`pdf()`,`bmp()`,`jpeg()`, i`tiff()`.
+Można określić kilka właściwości wyjściowego wykresu, w tym szerokość, wysokość i rozdzielczość.
+
+{tmap (package)!saving maps}
+Dodatkowo kilka pakietów graficznych udostępnia własne funkcje zapisywania wyjścia graficznego.
+Na przykładpakiet**tmap**posiadafunkcję`tmap_save()`.
+Można zapisaćobiekt`tmap`  w różnych formatach graficznych lub pliku HTML, określając nazwę obiektu i ścieżkę do nowego pliku.
+
+```{r 07-read-write-plot-37, eval=FALSE}
+library(tmap)
+tmap_obj = tm_shape(world) + tm_polygons(col = "lifeExp")
+tmap_save(tmap_obj, filename = "lifeExp_tmap.png")
+```
+
+Z drugiej strony, interaktywne mapy utworzone wpakiecie**mapview**można zapisaćjako plik HTML lub obraz za pomocą`mapshot2()`funkcji :
+
+```{r 07-read-write-plot-38, eval=FALSE}
+library(mapview)
+mapview_obj = mapview(world, zcol = "lifeExp", legend = TRUE)
+mapshot2(mapview_obj, url = "my_interactive_map.html")
+```
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_08-ex.Rmd', quiet = TRUE, 
+                        options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+

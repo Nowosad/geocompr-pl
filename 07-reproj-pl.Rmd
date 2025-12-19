@@ -1,0 +1,920 @@
+# Przeprojektowanie danych geograficznych{#reproj-geo-data}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## Wymagania{-}
+
+- W tym rozdziale potrzebne są następujące pakiety:
+
+```{r 06-reproj-1, message=FALSE, warning=FALSE}
+library(sf)
+library(terra)
+library(dplyr)
+library(spData)
+library(spDataLarge)
+```
+
+## Wprowadzenie{#reproj-intro}
+
+W sekcji @ref(crs-intro) przedstawiono systemy odniesienia współrzędnych (CRS), skupiając się na dwóch głównych typach:systemach współrzędnych*geograficznych*(„lon/lat”, z jednostkami w stopniach długości i szerokości geograficznej) orazsystemach współrzędnych*rzutowanych*(zazwyczaj z jednostkami w metrach od punktu odniesienia).
+Niniejszy rozdział opiera się na tej wiedzy i rozwija ją.
+Pokazuje on,jak ustawić i*przekształcić*dane geograficzne z jednego CRS do innego, a ponadto podkreśla konkretne problemy, które mogą pojawić się w wyniku ignorowania CRS i o których należy pamiętać, zwłaszcza jeśli dane są przechowywane ze współrzędnymi długości i szerokości geograficznej.
+
+W wielu projektach nie ma potrzeby
+
+
+{CRS!geographic}
+{CRS!projected}
+
+martwić się o różne CRS, a tym bardziej o ich konwersję.
+Niemniej jednak ważne jest, aby wiedzieć, czy dane są w rzutowanym, czy geograficznym CRS, oraz jakie są tego konsekwencje dla operacji geometrycznych.
+Jeśli znasz te informacje, CRS powinny*po prostu działać*w tle: ludzie często muszą nagle nauczyć się CRS, gdy coś idzie nie tak.
+Posiadanie jasno zdefiniowanego CRS, w którym znajdują się wszystkie dane projektu, oraz zrozumienie, jak i dlaczego należy używać różnych CRS, może zapewnić, że wszystko pójdzie zgodnie z planem.
+Ponadto poznanie systemów współrzędnych pogłębi Twoją wiedzę na temat zbiorów danych geograficznych i sposobów ich efektywnego wykorzystania.
+
+W tym rozdziale omówiono podstawy CRS, pokazano konsekwencje stosowania różnych CRS (w tym potencjalne problemy) oraz sposób „przekształcania” zbiorów danych z jednego systemu współrzędnych do innego.
+W następnej sekcji przedstawiamy CRS w R, a następnie w sekcji @ref(crs-setting) pokazujemy, jak uzyskać i ustawić CRS powiązane z obiektami przestrzennymi.
+Sekcja @ref(geom-proj) pokazuje, jak ważne jest poznanie systemu CRS, w którym znajdują się dane, na przykładzie tworzenia buforów.
+Kwestie dotyczące tego, kiedy należy przeprojektować i jakiego CRS użyć, omawiamy odpowiednio w sekcji @ref(whenproject) i sekcji @ref(which-crs).
+Na koniec omawiamy przeprojektowywanie obiektów wektorowych i rastrowych w sekcjach @ref(reproj-vec-geom) i @ref(reproj-ras) oraz modyfikowanie projekcji map w sekcji @ref(mapproj).
+
+## Systemy odniesienia współrzędnych{#crs-in-r}
+
+\\index{CRS!EPSG}
+\\index{CRS!WKT}
+\\index{CRS!proj-string}
+Większość nowoczesnych narzędzi geograficznych wymagających konwersji CRS, w tym podstawowe pakiety R-spatial i oprogramowanie GIS dla komputerów stacjonarnych, takie jak QGIS, współpracuje z[PROJ](https://proj.org), biblioteką open source C++, która „przekształca współrzędne z jednego układu odniesienia współrzędnych (CRS) do innego”.
+Układy CRS można opisać na wiele sposobów, w tym następujące:
+
+1. Proste, ale potencjalnie niejednoznaczne stwierdzenia, takie jak „są to współrzędne długości i szerokości geograficznej”.
+2. Sformalizowane, ale obecnie nieaktualne „ciągi proj4” (znane również jako „proj-string”), takie jak`+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs`
+3. Z identyfikującym ciągiem tekstowym „authority:code”, takim jak`EPSG:4326`
+
+Każdy z nich odnosi się do tego samego: układu współrzędnych „WGS84”, który stanowi podstawę współrzędnych Globalnego Systemu Pozycjonowania (GPS) i wielu innych zbiorów danych.
+Który z nich jest jednak poprawny?
+
+Krótka{CRS!EPSG}
+odpowiedź brzmi: preferowany jest trzeci sposób identyfikacji CRS:`EPSG:4326`jest rozumiany przezpakiety**sf**(a co za tym idzie**stars**) i**terra**omówione w tej książce, a takżeprzezwiele innych projektów oprogramowania do pracy z danymi geograficznymi, w tym[QGIS](https://docs.qgis.org/3.16/en/docs/user_manual/working_with_projections/working_with_projections.html)i[PROJ](https://proj.org/development/quickstart.html).
+`EPSG:4326`jest przyszłościowy.
+Ponadto, mimo że jest czytelny dla komputerów, „EPSG:4326” jest krótki, łatwy do zapamiętania i bardzo łatwy do znalezienia w Internecie (wyszukiwanie EPSG:4326 prowadzina przykładdo dedykowanej strony w witrynie[epsg.io](https://epsg.io/4326)).
+Bardziej zwięzły identyfikator`4326`jest rozumiany przez**sf**, ale**zalecamy bardziej jednoznaczne`AUTHORITY:CODE`przedstawienie , aby uniknąć niejasności i zapewnić kontekst**.
+
+Dłuższa odpowiedź{CRS!WKT}
+brzmi, że żadne z trzech opisów nie jest wystarczające i potrzebne są bardziej szczegółowe informacje, aby zapewnić jednoznaczne przetwarzanie i transformacje CRS: ze względu na złożoność CRS nie jest możliwe uchwycenie wszystkich istotnych informacji na ich temat w tak krótkich ciągach tekstowych.
+Z tego powodu Open Geospatial Consortium (OGC, które opracowało również specyfikację prostych funkcjiimplementowanąprzezpakiet**sf**) opracowało otwarty standardowy format opisywania CRS o nazwie WKT (Well-Known Text).
+Zostało to szczegółowo opisane w[ponad 100-stronicowym dokumencie](https://portal.opengeospatial.org/files/18-010r7) , który „definiuje strukturę i zawartość implementacji ciągu tekstowego abstrakcyjnego modelu układów odniesienia współrzędnych opisanego w normie ISO 19111:2019” [@opengeospatialconsortium_wellknown_2019] .
+Reprezentacja WKT układu odniesienia WGS84, który ma**identyfikator**`EPSG:4326`,jest następująca:
+
+```{r}
+st_crs("EPSG:4326")
+```
+
+\\index{CRS!SRID}
+Wynik polecenia pokazuje,jakdziałaidentyfikator układu odniesienia (znany również jako identyfikator odniesienia przestrzennego lub[SRID](https://postgis.net/workshops/postgis-intro/projection.html)): jest to po prostu wyszukiwanie, zapewniające unikalny identyfikator powiązany z bardziej kompletną reprezentacją WKT układu odniesienia.
+Rodzi to pytanie: co się stanie, jeśli wystąpi niezgodność między identyfikatorem a dłuższą reprezentacją WKT układu odniesienia?
+W tej kwestii @opengeospatialconsortium\_wellknown\_2019 jest jasny – szczegółowa reprezentacja WKT ma pierwszeństwo przed[identyfikatorem](https://docs.ogc.org/is/18-010r7/18-010r7.html#37):
+
+> Jeśli jakiekolwiek atrybuty lub wartości podane w cytowanym identyfikatorze są sprzeczne z atrybutami lub wartościami podanymi wyraźnie w opisie WKT, pierwszeństwo mają wartości WKT.
+
+indeks{CRS!SRID}
+Konwencja odwoływania się do identyfikatorów CRS w postaci`AUTHORITY:CODE`, która jest również stosowana w oprogramowaniu geograficznym napisanym w innych[językach](https://jorisvandenbossche.github.io/blog/2020/02/11/geopandas-pyproj-crs/), pozwala na odwoływanie się do szerokiego zakresu formalnie zdefiniowanych układów współrzędnych.^\[
+Istnieje kilka innych sposobów odwoływania się do unikalnych CRS, przy czym[QGIS](https://docs.qgis.org/3.16/en/docs/pyqgis_developer_cookbook/crs.html?highlight=srid)akceptuje pięć typów identyfikatorów (kod EPSG, PostGIS SRID, INTERNAL SRID, proj-string i ciągi WKT)oraz inne typy identyfikatorów,takie jak bardziej rozbudowana wersja`EPSG:4326`identyfikatora  ,`urn:ogc:def:crs:EPSG::4326` [@opengeospatialconsortium_wellknown_2019] .
+
+Najczęściej używanym organem w identyfikatorach CRS jest*EPSG*\\index{CRS!EPSG}, skrót od European Petroleum Survey Group, który opublikował standardową listę CRS (EPSG został[przejęty](http://wiki.gis.com/wiki/index.php/European_Petroleum_Survey_Group)przez[Komitet](https://epsg.org/home.html)[Geomatyki Międzynarodowego Stowarzyszenia Producentów Ropy Naftowej i Gazu](https://epsg.org/home.html)w 2005 r.).
+W identyfikatorach CRS można stosować inne autorytety, na przykład odnosi się do
+`ESRI:54030`implementacji projekcji Robinsona przez ESRI, która ma następujący ciąg WKT (pokazano tylko pierwsze osiem wierszy):
+
+```{r, out.lines=8}
+st_crs("ESRI:54030")
+```
+
+```{r, eval=FALSE, echo=FALSE}
+sf::st_crs("urn:ogc:def:crs:EPSG::4326")
+```
+
+\\index{CRS!WKT}
+Ciągi znaków WKT są wyczerpujące, szczegółowe i precyzyjne, co pozwala na jednoznaczne przechowywanie i przekształcanie układów odniesienia (CRS).
+Zawierają one wszystkie istotne informacje o danym układzie odniesienia, w tym jego datum i elipsoidę, południk zerowy, rzut i jednostki.^\[
+Przed pojawieniem się definicji WKT CRS, standardowym sposobem określania operacji współrzędnych i przechowywania układów odniesienia (CRS) był ciąg znaków proj.
+Te reprezentacje ciągów znaków, zbudowane w formie klucz=wartość (np.`+proj=longlat +datum=WGS84 +no_defs`), zostały już lub powinny zostać w przyszłości zastąpione przez reprezentacje WKT w większości przypadków.
+\]
+
+\\index{CRS!proj-string}
+Najnowsze wersje PROJ (6+) nadal pozwalają na używanie proj-strings do definiowania operacji współrzędnych, ale niektóre klucze proj-string (`+nadgrids`,`+towgs84`,`+k`,`+init=epsg:`) nie są już obsługiwane lub są odradzane.
+Ponadto w proj-string można bezpośrednio ustawić tylko trzy datums (tj. WGS84, NAD83 i NAD27).
+Dłuższe wyjaśnienia dotyczące ewolucji definicji CRS i biblioteki PROJ można znaleźć w @bivand\_progress\_2021, rozdziale 2 @pebesma\_spatial\_2023 oraz w[poście](https://inbo.github.io/tutorials/tutorials/spatial_crs_coding/)[na blogu Florisa Vanderhaeghe, dostępnym pod adresem inbo.github.io/tutorials/tutorials/spatial\_crs\_coding/](https://inbo.github.io/tutorials/tutorials/spatial_crs_coding/)
+.Ponadto, jak opisano w[dokumentacji](https://proj.org/development/reference/cpp/cpp_general.html)[PROJ](https://proj.org/development/reference/cpp/cpp_general.html), istnieją różne wersje formatu WKT CRS, w tym WKT1 i dwie odmiany WKT2, z których ta ostatnia (WKT2, specyfikacja z 2018 r.) odpowiada normie ISO 19111:2019 [@opengeospatialconsortium_wellknown_2019] .
+
+## Wyszukiwanie i ustawianie układów{#crs-setting}współrzędnych
+
+\\index{vector!CRS}
+Przyjrzyjmy się, w jaki sposób CRS są przechowywane w obiektach przestrzennych R oraz jak można je wyszukiwać i ustawiać.
+Najpierw przyjrzymy się pobieraniu i ustawianiu CRS w**wektorowych**obiektach danych geograficznych, zaczynając od następującego przykładu:
+
+```{r 02-spatial-data-52, message=FALSE, results="hide"}
+vector_filepath = system.file("shapes/world.gpkg", package = "spData")
+new_vector = read_sf(vector_filepath)
+```
+
+Nasz nowy obiekt,`new_vector`, jest ramką danych klasy`sf`,która reprezentuje kraje na całym świecie (szczegółowe informacjemożna znaleźć na`?spData::world`stronie pomocy).
+CRS można pobrać za pomocąfunkcji**sf**`st_crs()`. .
+
+```{r 02-spatial-data-53, eval=FALSE}
+st_crs(new_vector) # get CRS
+#> Coordinate Reference System:
+#>   User input: WGS 84 
+#>   wkt:
+#>   ...
+```
+
+```{r, echo=FALSE, eval=FALSE}
+# Aim: capture crs for comparison with updated CRS
+new_vector_crs = st_crs(new_vector)
+```
+
+\\index{vector!CRS}
+Wynikiem jest lista zawierająca dwa główne elementy:
+
+1. `User input`(w tym przypadkusynonim  ,`EPSG:4326`który w tym przypadku został pobrany z pliku`WGS 84`wejściowego), odpowiadający identyfikatorom CRS opisanym powyżej
+2. `wkt`, zawierający pełny ciąg WKT ze wszystkimi istotnymi informacjami o CRS
+
+Element`input`  jest elastyczny i w zależności od pliku wejściowego lub danych wprowadzonych przez użytkownika może zawieraćreprezentację`AUTHORITY:CODE`  (np.`EPSG:4326`), nazwę CRS (np.`WGS 84`) lub nawet definicję ciągu proj.
+Element`wkt`  przechowuje reprezentację WKT, która jest używana podczas zapisywania obiektu do pliku lub wykonywania jakichkolwiek operacji na współrzędnych.
+Powyżej widzimy, żeobiekt`new_vector`  ma elipsoidę WGS84, używa południka zerowego Greenwich i kolejności osi szerokości i długości geograficznej.
+W tym przypadku mamy również kilka dodatkowych elementów, takich jak`USAGE`wyjaśniający obszar odpowiedni do użycia tego CRS oraz`ID`wskazujący identyfikator CRS:`EPSG:4326`.
+
+\\index{vector!CRS}
+Funkcja`st_crs`ma również jedną przydatną cechę — możemy pobrać dodatkowe informacje o używanym CRS.
+Na przykład spróbuj uruchomić:
+
+- `st_crs(new_vector)$IsGeographic`aby sprawdzić
+
+,
+
+- czy układ CRS jest geograficzny,
+- `st_crs(new_vector)$units_gdal`aby dowiedzieć się
+- ,
+- jakie są jednostki
+- `st_crs(new_vector)$srid`
+- CRS
+
+,
+
+- aby wyodrębnić identyfikator „SRID” (jeśli jest dostępny)
+- `st_crs(new_vector)$proj4string`
+
+,
+
+- aby wyodrębnić reprezentację ciągu proj
+
+. W przypadkach, gdy brakuje układu CRS lub ustawiono niewłaściwy układ CRS,można użyć funkcji`st_set_crs()`(w tym przypadku ciąg WKT pozostaje niezmieniony, ponieważ układ CRS był już poprawnie ustawiony podczas wczytywania pliku):
+
+```{r 02-spatial-data-54}
+new_vector = st_set_crs(new_vector, "EPSG:4326") # set CRS
+```
+
+```{r, echo=FALSE, eval=FALSE}
+waldo::compare(new_vector_crs, st_crs(new_vector))
+# `old$input`: "WGS 84"
+# `new$input`: "EPSG:4326"
+```
+
+\\index{raster!CRS}
+Pobieranie i ustawianie CRS działa w podobny sposób dla obiektów danych geograficznych rastrowych.
+Funkcja`crs()`  w`terra`pakiecie  uzyskuje dostęp do informacji CRS zobiektu`SpatRaster`  (zwróć uwagę na użyciefunkcji`cat()`  w celu ładnego wydrukowania).
+
+```{r 02-spatial-data-55, out.lines=6}
+raster_filepath = system.file("raster/srtm.tif", package = "spDataLarge")
+my_rast = rast(raster_filepath)
+cat(crs(my_rast)) # get CRS
+```
+
+Wynikiem jest reprezentacja ciągu WKT CRS.
+Ta sama funkcja,`crs()`, może być również użyta do ustawienia CRS dla obiektów rastrowych.
+
+```{r 02-spatial-data-56}
+crs(my_rast) = "EPSG:26912" # set CRS
+```
+
+W tym przypadku możemy użyć identyfikatora (zalecanego w większości przypadków) lub pełnej reprezentacji ciągu znaków WKT.
+Alternatywnymi metodami ustawiania`crs`są ciągi znaków proj-string lub CRS wyodrębnione z innych istniejących obiektów za pomocą`crs()`, chociaż podejścia te mogą być mniej przyszłościowe.
+
+Co ważne,funkcje`st_crs()``crs()`inie zmieniają wartości współrzędnych ani geometrii.
+Ich rolą jest jedynie ustawienie informacji metadanych o CRS obiektu.
+
+W niektórych przypadkach CRS obiektu geograficznego jest nieznany, jak ma to miejsce w przypadku`london`zestawu danych utworzonego w poniższym fragmencie kodu, opartym na przykładzie Londynu przedstawionym w sekcji @ref(vector-data):
+
+```{r 06-reproj-2}
+london = data.frame(lon = -0.1, lat = 51.5) |> 
+  st_as_sf(coords = c("lon", "lat"))
+st_is_longlat(london)
+```
+
+Wynik`NA`pokazuje, że**sf**nie wie, czym jest CRS i nie chce zgadywać (`NA`dosłownie oznacza „niedostępne”).
+O ile CRS nie zostanie ręcznie określone lub załadowane ze źródła zawierającego metadane CRS,**sf**nie dokonuje żadnych wyraźnych założeń dotyczących systemów współrzędnych, poza stwierdzeniem „nie wiem”.
+Takie zachowanie ma sens, biorąc pod uwagę różnorodność dostępnych CRS, ale różni się od niektórych podejść, takich jak specyfikacja formatu pliku GeoJSON, która przyjmuje uproszczone założenie, że wszystkie współrzędne mają CRS lon/lat:`EPSG:4326`.
+Zbiory danych bez określonego CRS mogą powodować problemy: wszystkie współrzędne geograficzne mają system odniesienia współrzędnych, a oprogramowanie może podejmować właściwe decyzje dotyczące operacji rysowania i geometrii tylko wtedy, gdy wie, z jakim typem CRS pracuje.
+Dlatego też ważne jest, aby zawsze sprawdzać CRS zestawu danych i ustawić go
+
+,
+
+jeśli go brakuje.
+
+## Operacje
+
+```{r 06-reproj-3}
+london_geo = st_set_crs(london, "EPSG:4326")
+st_is_longlat(london_geo)
+```
+
+## geometryczne na danych rzutowanych i{#geom-proj}nierzutowanych
+
+Odwersji**sf**1\.0.0 zdolność języka R do pracy z geograficznymi zestawami danych wektorowych, które mają CRS lon/lat, uległa znacznej poprawie dzięki integracji z*silnikiem geometrii sferycznej*S2wprowadzonym w sekcji @ref(s2).
+Jak pokazano na rysunku @ref(fig:s2geos),**sf**używa GEOS\\index{GEOS}lub S2\\index{S2}w zależności od typu CRS i tego, czy S2 zostało wyłączone (domyślnie jest włączone).^\[Funkcja`st_area()`stanowi wyjątek, ponieważ wykorzystujefunkcję  `st_geod_area()`**lwgeom**do obliczania obszarów dla danych z geograficznymi układami współrzędnych CRS, gdy`sf_use_s2()`jest wyłączone.\]
+GEOS jest zawsze używane dla danych rzutowanych i danych bez układu współrzędnych CRS; w przypadku danych geograficznych domyślnie używane jest S2, ale można je wyłączyć za pomocą`sf::sf_use_s2(FALSE)`.
+
+```{r s2geos, fig.cap="Behavior of the geometry operations in the sf package depending on the input data's CRS.", echo=FALSE}
+'digraph G3 {
+   layout=dot
+   rankdir=TB
+
+   node [shape = rectangle];
+   rec1 [label = "Spatial data" shape = oval];
+   rec2 [label = "Geographic CRS\n " shape = cds];
+   rec3 [label = "Projected CRS\nor CRS is missing" shape = cds]
+   rec4 [label = "S2 enabled\n(default)" shape = diamond]
+   rec5 [label = "S2 disabled\n " shape = diamond]
+   rec6 [label = "sf uses s2library for \ngeometry operations" center = true];
+   rec7 [label = "sf uses GEOS for \ngeometry operations" center = true];
+   rec8 [label = "Result" shape = oval weight=100];
+   rec9 [label = "Result" shape = oval weight=100];
+
+   rec1 -> rec2;
+   rec1 -> rec3;
+   rec2 -> rec4;
+   rec2 -> rec5;
+   rec3 -> rec7;
+   rec4 -> rec6;
+   rec5 -> rec7;
+   rec6 -> rec8;
+   rec7 -> rec9;
+   }' -> s2geos
+# # exported manually; the code below returns a low res version of png
+# tmp = DiagrammeR::grViz(s2geos)
+# htmlwidgets::saveWidget(widget = tmp, file = "images/07-s2geos.html")
+# # tmp
+# tmp = DiagrammeRsvg::export_svg(tmp)
+# library(htmltools)
+# html_print(HTML(tmp))
+# tmp = charToRaw(tmp)
+# # rsvg::rsvg_png(tmp, "images/07-s2geos.png")
+# webshot::webshot(url = "images/07-s2geos.html", file = "images/07-s2geos.png", vwidth = 800, vheight = 600)
+# download.file(
+#   "https://user-images.githubusercontent.com/1825120/188572856-7946ae32-98de-444c-9f48-b1d7afcf9345.png", 
+#   destfile = "images/07-s2geos.png"
+#   )
+# browseURL("images/07-s2geos.png")
+knitr::include_graphics("images/07-s2geos.png")
+```
+
+Aby pokazać, jak ważne są CRS, stworzymy bufor o szerokości 100 km wokółobiektu`london`z poprzedniej sekcji.
+Stworzymy również celowo wadliwy bufor o „odległości” 1 stopnia, co odpowiada w przybliżeniu 100 km (1 stopień to około 111 km na równiku).
+Zanim przejdziemy do kodu, warto przejść do rysunku @ref(fig:crs-buf), aby zapoznać się z wynikami, które można odtworzyć, wykonując poniższe fragmenty kodu.
+
+Pierwszym etapem jest utworzenie trzech buforów wokółobiektów`london``london_geo`iutworzonych powyżej, z odległościami granicznymi wynoszącymi 1 stopień i 100 km  (lub 100 000 m, co można wyrazić jako`1e5`w notacji naukowej) od centrum Londynu:
+
+```{r 06-reproj-4-1}
+london_buff_no_crs = st_buffer(london, dist = 1)   # incorrect: no CRS
+london_buff_s2 = st_buffer(london_geo, dist = 100000) # silent use of s2
+london_buff_s2_100_cells = st_buffer(london_geo, dist = 100000, max_cells = 100) 
+```
+
+W pierwszym wierszu powyżej**sf**zakłada,że dane wejściowe są rzutowane i generuje wynik z buforem w jednostkach stopni, co jest problematyczne, jak zobaczymy.
+W drugim wierszu**sf**po cichu używa silnika geometrii sferycznej S2, wprowadzonego w rozdziale @ref(spatial-class), do obliczenia zasięgu bufora przy użyciu wartości domyślnej\---`max_cells = 1000`ustawionej na`100`w wierszu trzecim --- konsekwencje, które wkrótce staną się oczywiste.
+Aby podkreślić wpływużyciaprzez**sf**silnika geometrii{S2}S2\\indexdla nieprzekształconych (geograficznych) układów współrzędnych, tymczasowo wyłączymy go za pomocą polecenia`sf_use_s2()`(któredomyślniejest włączone,`TRUE`,) w poniższym fragmencie kodu.
+Podobnie`london_buff_no_crs`jak, nowy`london_geo`obiekt  jest geograficzną abominacją: ma jednostki stopni, co w większości przypadków nie ma sensu:
+
+```{r 06-reproj-4-2}
+sf::sf_use_s2(FALSE)
+london_buff_lonlat = st_buffer(london_geo, dist = 1) # incorrect result
+sf::sf_use_s2(TRUE)
+```
+
+Powyższy komunikat ostrzegawczy wskazuje na problemy z wykonywaniem operacji geometrii płaskiej na danych długości i szerokości geograficznej.
+Gdy operacje geometrii sferycznej są wyłączone za pomocą polecenia`sf::sf_use_s2(FALSE)`, bufory (i inne operacje geometryczne) mogą dawać bezużyteczne wyniki,ponieważ używają jednostek szerokości i długości geograficznej, które są kiepskim substytutem właściwych jednostek odległości, takich jak metry.
+
+```{block2 06-reproj-5, type="rmdnote"}
+The distance between two lines of longitude, called meridians\index{meridians}, is around 111 km at the equator (execute `geosphere::distGeo(c(0, 0), c(1, 0))` to find the precise distance).
+This shrinks to zero at the poles.
+At the latitude of London, for example, meridians are less than 70 km apart (challenge: execute code that verifies this).
+<!-- `geosphere::distGeo(c(0, 51.5), c(1, 51.5))` -->
+Lines of latitude, by contrast, are equidistant from each other irrespective of latitude: they are always around 111 km apart, including at the equator and near the poles (see Figures \@ref(fig:crs-buf) to \@ref(fig:wintriproj)).
+```
+
+Nie należy interpretować ostrzeżenia dotyczącego geograficznego (`longitude/latitude`) CRS jako „CRS nie powinno być ustawione”: prawie zawsze powinno być!
+Lepiej jest traktować to jako sugestię, aby*ponownie rzutować*dane na rzutowany układ odniesienia CRS.Nie zawsze
+trzeba stosować się do tej sugestii: wykonywanie operacji przestrzennych i geometrycznych w niektórych przypadkach nie ma większego znaczenia (np. podzbiory przestrzenne).
+Jednak w przypadku operacji związanych z odległościami,takich jak buforowanie, jedynym sposobem na zapewnienie dobrego wyniku (bez użycia silników geometrii sferycznej) jest utworzenie rzutowanej kopii danych i wykonanie operacji na tej kopii.
+Odbywa się to w poniższym fragmencie kodu.
+
+```{r 06-reproj-6}
+london_proj = data.frame(x = 530000, y = 180000) |> 
+  st_as_sf(coords = c("x", "y"), crs = "EPSG:27700")
+```
+
+Wynikiem jest nowy obiekt identyczny z`london`, ale utworzony przy użyciu odpowiedniego CRS (w tym przypadku British National Grid, który ma kod EPSG 27700) z jednostkami metrycznymi.
+Możemy sprawdzić, czy CRS uległ zmianie, używając`st_crs()`w następujący sposób (część wyników została zastąpiona przez`...,`):
+
+```{r 06-reproj-7, out.lines=8}
+st_crs(london_proj)
+```
+
+Istotnymi elementami opisu CRS są kod EPSG (`EPSG: 27700`) oraz szczegółowy`wkt`ciągznaków(pokazano tylko pięć pierwszych wierszy).^\[
+Krótki opis najważniejszych parametrów projekcji i powiązanych pojęć można znaleźć w czwartym wykładzie Jochena Albrechta zamieszczonym na stronie
+http://www.geography.hunter.cuny.edu/~jochen/GTECH361/lectures/ oraz w informacjach na stronie https://proj.org/usage/projections.html.
+\]
+Fakt, że jednostki CRS opisane w polu LENGTHUNIT są podane w metrach (a nie w stopniach), wskazuje, że jest to rzutowany CRS:`st_is_longlat(london_proj)`zwraca`FALSE`terazi operacje geometryczne na`london_proj`będą działać bez ostrzeżenia.Operacje
+buforowe na`london_proj`będą wykorzystywać GEOS, a wyniki będą zwracane z odpowiednimi jednostkami odległości.
+Poniższy wiersz kodu tworzy bufor wokół*rzutowanych*danych o długości dokładnie 100 km:
+
+```{r 06-reproj-8}
+london_buff_projected = st_buffer(london_proj, 100000)
+```
+
+Geometrie trzech`london_buff*`obiektów  utworzonych w poprzednim kodzie, które*mają*określony CRS (`london_buff_s2`,`london_buff_lonlat`i`london_buff_projected`),są przedstawione na rysunku @ref(fig:crs-buf).
+
+Z rysunku @ref(fig:crs-buf) jasno wynika, że bufory oparte
+
+```{r crs-buf-old, include=FALSE, eval=FALSE}
+#| message: FALSE
+#| warning: FALSE
+#| results: hide
+uk = rnaturalearth::ne_countries(scale = 50, returnclass = "sf") |> 
+  filter(grepl(pattern = "United Kingdom|Ire", x = name_long))
+plot(london_buff_s2, graticule = st_crs(4326), axes = TRUE, reset = FALSE, lwd = 2)
+plot(london_buff_s2_100_cells, lwd = 9, add = TRUE)
+plot(st_geometry(uk), add = TRUE, border = "gray", lwd = 3)
+uk_proj = uk |>
+  st_transform("EPSG:27700")
+plot(london_buff_projected, graticule = st_crs("EPSG:27700"), axes = TRUE, reset = FALSE, lwd = 2)
+plot(london_proj, add = TRUE)
+plot(st_geometry(uk_proj), add = TRUE, border = "gray", lwd = 3)
+plot(london_buff_lonlat, graticule = st_crs("EPSG:27700"), axes = TRUE, reset = FALSE, lwd = 2)
+plot(london_proj, add = TRUE)
+plot(st_geometry(uk), add = TRUE, border = "gray", lwd = 3)
+```
+
+```{r crs-buf, fig.cap="Buffers around London showing results created with the S2 spherical geometry engine on lon/lat data (left), projected data (middle) and lon/lat data without using spherical geometry (right). The left plot illustrates the result of buffering unprojected data with sf, which calls Google's S2 spherical geometry engine by default with max cells set to 1000 (thin line). The thick, blocky line illustrates the result of the same operation with max cells set to 100.", fig.scap="Buffers around London with a geographic and projected CRS.", echo=FALSE, fig.asp=0.39, fig.width=8, warning=FALSE, message=FALSE}
+uk = rnaturalearth::ne_countries(scale = 50, returnclass = "sf") |> 
+  filter(grepl(pattern = "United Kingdom|Ire", x = name_long))
+
+library(tmap)
+tm1 = tm_shape(london_buff_s2, bbox = st_bbox(london_buff_s2_100_cells)) + 
+  tm_graticules(lwd = 0.2) +
+  tm_borders(col = "black", lwd = 0.5) + 
+  tm_shape(london_buff_s2_100_cells) +
+  tm_borders(col = "black", lwd = 1.5) +
+  tm_shape(uk) +
+  tm_polygons(lty = 3, fill_alpha = 0.2, fill = "#567D46") +
+  tm_shape(london_proj) +
+  tm_symbols()
+
+tm2 = tm_shape(london_buff_projected, bbox = st_bbox(london_buff_s2_100_cells)) + 
+  tm_grid(lwd = 0.2) +
+  tm_borders(col = "black", lwd = 0.5) + 
+  tm_shape(uk) +
+  tm_polygons(lty = 3, fill_alpha = 0.2, fill = "#567D46") +
+  tm_shape(london_proj) +
+  tm_symbols()
+
+tm3 = tm_shape(london_buff_lonlat, bbox = st_bbox(london_buff_s2_100_cells)) + 
+  tm_graticules(lwd = 0.2) +
+  tm_borders(col = "black", lwd = 0.5) + 
+  tm_shape(uk) +
+  tm_polygons(lty = 3, fill_alpha = 0.2, fill = "#567D46") +
+  tm_shape(london_proj) +
+  tm_symbols()
+
+tmap_arrange(tm1, tm2, tm3, nrow = 1)
+```
+
+na`s2`i prawidłowo rzutowanych CRS nie są „ściśnięte”, co oznacza, że każda część granicy bufora znajduje się w równej odległości od Londynu.
+Wyniki generowane z CRS lon/lat,gdy*nie*`s2`jestużywane, ponieważ dane wejściowe nie mają CRS lub ponieważ`sf_use_s2()`jest wyłączone, są mocno zniekształcone, a wynik jest wydłużony w osi północ-południe, co podkreśla niebezpieczeństwa związane z używaniem algorytmów, które zakładają dane rzutowane na dane wejściowe lon/lat (tak jak robi to GEOS).
+Wyniki generowane przy użyciu S2\\index{S2}są również zniekształcone, choć w mniejszym stopniu.
+Obie granice bufora na rysunku @ref(fig:crs-buf) (po lewej) są postrzępione, choć może to być widoczne lub istotne tylko w przypadku grubej granicy reprezentującej bufor utworzony przy użyciu`s2`argumentu`max_cells`ustawionego na 100.
+Wynika z tego, że wyniki uzyskane z danych lon/lat za pomocą S2 będą się różnić od wyników uzyskanych przy użyciu danych rzutowanych.
+Różnica międzybuforami wyprowadzonymiz S2{S2}\\indexabuforami wyprowadzonymiz GEOS{GEOS}\\indexna danych rzutowanych zmniejsza się wraz ze`max_cells`wzrostemwartości: „właściwa” wartość dla tego argumentu może zależeć od wielu czynników, a wartość domyślna 1000 jest często rozsądną wartością domyślną.
+Przy wyborze`max_cells`wartości należy zrównoważyć szybkość obliczeń z rozdzielczością wyników.
+W sytuacjach, w których korzystne są gładkie, zakrzywione granice, przed buforowaniem (lub wykonywaniem innych operacji geometrycznych) odpowiednie może być przekształcenie do rzutowanego CRS.
+
+Znaczenie CRS (głównie tego, czy są one rzutowane, czy geograficzne) oraz wpływdomyślnego ustawienia**sf**do używania S2 dla buforów na danych długości i szerokości geograficznej jest jasne z powyższego przykładu.
+W kolejnych sekcjach omówiono bardziej szczegółowo, który CRS należy użyć, gdypotrzebne*są*rzutowane CRS, oraz szczegóły dotyczące ponownego rzutowania obiektów wektorowych i rastrowych.
+
+## Kiedy należy ponownie rzutować?{#whenproject}
+
+\\index{CRS!reprojection}
+W poprzedniej sekcji pokazano, jak ręcznie ustawić CRS za pomocą`st_set_crs(london, "EPSG:4326")`.Jednak
+w rzeczywistych zastosowaniach CRS są zazwyczaj ustawiane automatycznie podczas odczytu danych.
+W wielu projektach głównym zadaniem związanym z CRS jest*przekształcanie*obiektów z jednego CRS do innego.
+Kiedy jednak należy przekształcać dane?
+I do jakiego układu współrzędnych? Nie
+ ma jednoznacznych odpowiedzi na te pytania, a wybór układu współrzędnych zawsze wiąże się z kompromisami [@maling_coordinate_1992] .W niniejszej sekcji
+przedstawiono jednak kilka ogólnych zasad, które mogą pomóc w podjęciu decyzji.
+
+Najpierw warto zastanowić się*, kiedy należy dokonać transformacji*.
+W niektórych przypadkach transformacja do geograficznego CRS jest niezbędna, na przykład podczas publikowania danych online za pomocąpakietu**leaflet**.
+Innym przypadkiem jest konieczność porównania lub połączenia dwóch obiektów o różnych CRS, jak pokazano podczas próby znalezienia odległości między dwoma`sf`obiektami o różnych CRS:
+
+```{r 06-reproj-9, eval=FALSE}
+st_distance(london_geo, london_proj)
+# > Error: st_crs(x) == st_crs(y) is not TRUE
+```
+
+Abyobiekty`london``london_proj`ibyłyporównywalne pod względem geograficznym, jeden z nich musi zostać przekształcony do CRS drugiego.
+Ale który układ CRS należy zastosować?
+Odpowiedź zależy od kontekstu: wiele projektów, zwłaszcza tych związanych z mapowaniem internetowym, wymaga wyników w formacie EPSG:4326, w którym to przypadku warto przekształcić obiekt rzutowany.
+Jeśli jednak projekt wymaga operacji geometrii płaskiej zamiast operacji geometrii sferycznej (np. w celu utworzenia buforów o gładkich krawędziach), warto przekształcić dane z geograficznego układu odniesienia CRS na równoważny obiekt z rzutowanym układem odniesienia CRS, takim jak British National Grid (EPSG:27700).
+Jest to temat sekcji @ref(reproj-vec-geom).
+
+## Który CRS użyć?{#which-crs}
+
+\\index{CRS!reprojection}
+\\index{projection!World Geodetic System}
+Kwestia wy*boru CRS*jest trudna i rzadko istnieje „właściwa” odpowiedź:
+ „Nie ma uniwersalnych projekcji, wszystkie powodują zniekształcenia, gdy są daleko od środka określonej ramki” [@bivand_applied_2013] .
+Ponadto nie należy przywiązywać się do jednej projekcji dla każdego zadania.
+Możliwe jest użycie jednej projekcji dla części analizy, innej projekcji dla innej części, a nawet jeszcze innej do wizualizacji.
+Zawsze staraj się wybierać układ odniesienia
+
+,
+
+który najlepiej służy Twoim celom!
+
+Przy wyborze**geograficznych układów odniesienia**\\indexodpowiedzią jest często[WGS84](https://en.wikipedia.org/wiki/World_Geodetic_System#A_new_World_Geodetic_System:_WGS_84).Jest
+on używany nie{CRS!geographic}tylko do mapowania internetowego, ale także dlatego, że zestawy danych GPS oraz tysiące zestawów danych rastrowych i wektorowych są domyślnie dostarczane w tym układzie odniesienia.
+WGS84 jest najpopularniejszym CRS na świecie, dlatego warto znać jego kod EPSG: 4326.^\[
+Zamiastmożna również`"EPSG:4326"`użyć`"OGC:CRS84"`. Pierwsze z nich zakłada,że szerokość geograficzna jest zawsze uporządkowana przed długością geograficzną, podczas gdy drugie jest standardową reprezentacją używaną przez GeoJSON, z współrzędnymi uporządkowanymi według długości geograficznej przed szerokością geograficzną.\]
+Ta „magiczna liczba” może być użyta do konwersji obiektów z nietypowymi rzutowanymi CRS na coś, co jest powszechnie rozumiane.
+
+A co w przypadku, gdywymagany jest**rzutowany**układ{CRS!projected}**odniesienia CRS**\\index?
+W niektórych przypadkach nie jest to coś, o czym możemy swobodnie decydować:
+ „często wybór rzutu jest dokonywany przez publiczną agencję kartograficzną” [@bivand_applied_2013] .Oznacza
+to, że podczas pracy z lokalnymi źródłami danych prawdopodobnie lepiej jest pracować z układem odniesienia CRS, w którym dane zostały dostarczone, aby zapewnić kompatybilność, nawet jeśli oficjalny układ odniesienia CRS nie jest najdokładniejszy.
+Przykład Londynu był łatwy do odpowiedzi, ponieważ (a) brytyjska siatka krajowa (z powiązanym kodem EPSG 27700) jest dobrze znana, a (b) oryginalny zbiór danych (`london`) już posiadał ten CRS.
+
+Powszechnie stosowanym domyślnym{UTM}
+systemem jest Universal Transverse Mercator ([UTM](https://en.wikipedia.org/wiki/Universal_Transverse_Mercator_coordinate_system)), zestaw CRS, który dzieli Ziemię na 60 klinów podłużnych i 20 segmentów szerokości geograficznej.
+Prawie każde miejsce na Ziemi ma kod UTM, na przykład „60H” odnosi się do północnej Nowej Zelandii, gdzie wynaleziono R.
+Kody EPSG UTM są kolejno numerowane od 32601 do 32660 dla lokalizacji na półkuli północnej i od 32701 do 32760 dla lokalizacji na półkuli południowej.
+
+Aby pokazać, jak działa ten`lonlat2UTM()`system, utwórzmy funkcjędo obliczania kodu EPSG powiązanego z dowolnym punktem na planecie w[następujący sposób](https://stackoverflow.com/a/9188972/):
+
+```{r 06-reproj-13}
+lonlat2UTM = function(lonlat) {
+  utm = (floor((lonlat[1] + 180) / 6) %% 60) + 1
+  if (lonlat[2] > 0) {
+    utm + 32600
+  } else{
+    utm + 32700
+  }
+}
+```
+
+Poniższe polecenie wykorzystuje tę funkcję do identyfikacji strefy UTM i powiązanego kodu EPSG dla Auckland i Londynu:
+
+```{r 06-reproj-14, echo=FALSE, eval=FALSE}
+stplanr::geo_code("Auckland")
+```
+
+```{r 06-reproj-15}
+lonlat2UTM(c(174.7, -36.9))
+lonlat2UTM(st_coordinates(london))
+```
+
+Poprzeczna projekcja Mercatora stosowana przez UTM CRS jest zgodna, ale zniekształca obszary i odległości wraz ze wzrostem odległości od centrum strefy UTM.
+Dokumentacja oprogramowania GIS Manifold sugeruje zatem ograniczenie zasięgu długościowego projektów wykorzystujących strefy UTM do 6 stopni od południka centralnego ([manifold.net](https://manifold.net/doc/mfd9/universal_transverse_mercator_projection.htm)).
+Dlatego zalecamy stosowanie UTM tylko wtedy, gdy skupiasz się na zachowaniu kątów dla stosunkowo niewielkiego obszaru!
+
+Obecnie dysponujemy również narzędziami pomagającymi w wyborze odpowiedniego CRS, w tympakietem**crsuggest**(@R-crsuggest).
+Główna funkcja tego pakietu,`suggest_crs()` , pobiera obiekt przestrzenny z geograficznym CRS i zwraca listę możliwych rzutowanych CRS, które mogą być użyte dla danego obszaru. [Pakiet] ^ [ten pozwala również ustalić prawdziwy CRS danych bez dołączonych informacji o CRS.]
+Innym pomocnym narzędziem jest strona internetowa<https://jjimenezshaw.github.io/crs-explorer/>, która zawiera listę CRS na podstawie wybranej lokalizacji i typu.
+Ważna uwaga: chociaż narzędzia te są pomocne w wielu sytuacjach, przed zastosowaniem zalecanego CRS należy zapoznać się z jego właściwościami.
+
+W{CRS!custom}
+przypadkach, gdy odpowiedni CRS nie jest od razu oczywisty, wybór CRS powinien zależeć od właściwości, które są najważniejsze do zachowania w kolejnych mapach i analizach.
+CRS są albo równopowierzchniowe, równodległe, konforemne (z niezmienionymi kształtami) lub stanowią kombinację kompromisów między nimi (sekcja @ref(projected-coordinate-reference-systems)).
+Niestandardowe CRS z lokalnymi parametrami można tworzyć dla interesującego regionu,a w projektach można stosować wiele CRS, jeśli żadne pojedyncze CRS nie nadaje się do wszystkich zadań
+.Obliczenia geodezyjne mogą stanowić rozwiązanie awaryjne, jeśli żadne układy CRS nie są odpowiednie (patrz[proj.org/geodesic.html](https://proj.org/geodesic.html)).
+Niezależnie od zastosowanego rzutowanego układu CRS, wyniki mogą nie być dokładne dla geometrii obejmujących setki kilometrów.
+
+Przy podejmowaniu{CRS!custom}
+decyzji o niestandardowym układzie CRS zalecamy, co następuje:^\[
+Serdecznie dziękujemy anonimowemu recenzentowi, którego uwagi stały się podstawą tej porady.
+\]
+
+\\index{projection!Lambert azimuthal equal-area}
+\\index{projection!Azimuthal equidistant}
+\\index{projection!Lambert conformal conic}
+\\index{projection!Stereographic}
+\\index{projection!Universal Transverse Mercator}
+
+- Projekcjaazymutalna równopowierzchniowa Lamberta ([LAEA](https://en.wikipedia.org/wiki/Lambert_azimuthal_equal-area_projection)) dla niestandardowej projekcji lokalnej (ustaw szerokość i długość geograficzną punktu początkowego na środek obszaru badania), która jest projekcją równopowierzchniową we wszystkich lokalizacjach, ale zniekształca kształty poza tysiącami kilometrów.
+- Projekcje azymutalne równodległe ([AEQD](https://en.wikipedia.org/wiki/Azimuthal_equidistant_projection)) dla szczególnie dokładnej odległości w linii prostej między punktem a punktem środkowym projekcji lokalnej Projekcje
+- stożkowe konforemne Lamberta ([LCC](https://en.wikipedia.org/wiki/Lambert_conformal_conic_projection)) dla regionów obejmujących tysiące kilometrów, z ustawieniem stożka tak, aby zachować rozsądne właściwości odległości i powierzchni między liniami stycznymi
+- Projekcjestereograficzne ([STERE](https://en.wikipedia.org/wiki/Stereographic_projection)) dla regionów polarnych, ale należy uważać, aby nie polegać na obliczeniach powierzchni i odległości tysiące kilometrów od centrum
+
+Jednym z możliwych podejść do automatycznego wyboru rzutowanego CRS specyficznego dla lokalnego zestawu danych jest utworzenierzutu[AEQD](https://en.wikipedia.org/wiki/Azimuthal_equidistant_projection)dla punktu środkowego obszaru badania.Wymaga
+to utworzenia niestandardowego CRS (bez kodu EPSG) z jednostkami metrów opartymi na punkcie środkowym zestawu danych.
+Należy pamiętać, że podejście to należy stosować ostrożnie: żadne inne zbiory danych nie będą kompatybilne z utworzonym niestandardowym CRS, a wyniki mogą być niedokładne w przypadku stosowania go do rozległych zbiorów danych obejmujących setki kilometrów.
+
+Zasady opisane w tej sekcji mają zastosowanie zarówno do zbiorów danych wektorowych,jak i rastrowych.
+Niektóre cechy transformacji CRS są jednak specyficzne dla każdego modelu danych geograficznych.Szczegóły dotyczące
+transformacji danych wektorowych omówimy w sekcji @ref(reproj-vec-geom),a transformacji rastrowych w sekcji @ref(reproj-ras).
+Następnie, w sekcji @ref(mapproj), pokazano, jak tworzyć niestandardowe projekcje map.
+
+## Przekształcanie geometrii{#reproj-vec-geom}wektorowych
+
+\\index{CRS!reprojection}
+\\index{vector!reprojection}
+W rozdziale @ref(spatial-class) pokazano, jak geometrie wektorowe składają się z punktów i jak punkty stanowią podstawę bardziej złożonych obiektów, takich jak linie i wielokąty.
+Przeprojektowanie wektorów polega zatem na transformacji współrzędnych tych punktów, które tworzą wierzchołki linii i wielokątów.
+
+Sekcja @ref(whenproject) zawiera przykład, w którym co najmniej jeden`sf`obiekt  musi zostać przekształcony w równoważny obiekt z innym CRS
+
+,
+
+aby obliczyć odległość między dwoma obiektami.
+
+```{r 06-reproj-10}
+london2 = st_transform(london_geo, "EPSG:27700")
+```
+
+Teraz,gdyutworzono`london`przekształconą wersję  za pomocąfunkcji**sf**`st_transform()`, można obliczyć odległość między dwoma reprezentacjami Londynu.^\[
+Alternatywą dla`st_transform()`jest`st_transform_proj()`z**lwgeom**, która umożliwia transformacje i omija GDAL oraz może obsługiwać projekcje nieobsługiwane przez GDAL.
+Jednak w momencie pisania tego tekstu (2024 r.) nie znaleźliśmy żadnych projekcji obsługiwanych przez`st_transform_proj()`,ale nieobsługiwanych przez`st_transform()`.
+\]
+Może zaskakiwać fakt, że`london`i`london2`są oddalone od siebie o ponad 2 km!^\[
+Różnica w położeniu między tymi dwoma punktami nie wynika z niedoskonałości operacji transformacji (która w rzeczywistości jest bardzo dokładna), ale z niskiej precyzji ręcznie utworzonych współrzędnych, które stworzyły`london`i`london_proj`.Zaskakujące
+może być również to, że wynik jest podawany w macierzy z jednostkami metrów.Wynika
+to z faktu,`st_distance()`żemoże podawać odległości między wieloma obiektami, a CRS ma jednostki metrów.
+Użyj`as.numeric()`, aby przekształcić wynik na zwykłą liczbę.
+\]
+
+```{r 06-reproj-11}
+st_distance(london2, london_proj)
+```
+
+Funkcje służące do wyszukiwania i przeprojektowywania CRS są przedstawione poniżej w odniesieniu do`cycle_hire_osm`,obiektu`sf`  z**spData**, który reprezentuje „stacje dokujące”,w których można wypożyczyć rowery w Londynie.
+CRSobiektów`sf`  można wyszukiwać i, jak dowiedzieliśmy się w sekcji @ref(reproj-intro), ustawiać za pomocą funkcji`st_crs()`.
+Wynik jest drukowany jako wiele wierszy tekstu zawierających informacje o układzie współrzędnych:
+
+```{r, out.lines=6}
+st_crs(cycle_hire_osm)
+```
+
+Jak widzieliśmy w sekcji @ref(crs-setting), główne składniki CRS,`User input`i`wkt`, są drukowane jako pojedyncza jednostka. Wynik`st_crs()`jest w rzeczywistości nazwanym wykazem klasy`crs`z dwoma elementami, pojedynczymi ciągami znaków o nazwach`input`i`wkt`, jak pokazano w wyniku następującego fragmentu kodu:
+
+```{r 06-reproj-16}
+crs_lnd = st_crs(london_geo)
+class(crs_lnd)
+names(crs_lnd)
+```
+
+Dodatkowe elementy można pobrać za pomocą`$`operatora , w tym`Name`,`proj4string`i`epsg`(szczegółowe informacjemożna znaleźć[`?st_crs`](https://r-spatial.github.io/sf/reference/st_crs.html)wsekcji  oraz w samouczku dotyczącym CRS i transformacji na[stronie](https://gdal.org/tutorials/osr_api_tut.html#querying-coordinate-reference-system)[internetowej](https://gdal.org/tutorials/osr_api_tut.html#querying-coordinate-reference-system)GDAL):
+
+```{r}
+crs_lnd$Name
+crs_lnd$proj4string
+crs_lnd$epsg
+```
+
+Jak wspomniano w sekcji @ref(crs-in-r), reprezentacja WKT, przechowywana w`$wkt`elemencie  obiektu`crs_lnd`, jest ostatecznym źródłem prawdy.
+Oznacza to, że wyniki poprzedniego fragmentu kodu są zapytaniami zreprezentacji`wkt`  dostarczonej przez PROJ, a nie nieodłącznymi atrybutami obiektu i jego CRS.
+
+Zarówno`wkt`elementy  ,`User Input`jak i  CRS ulegają zmianie po transformacji CRS obiektu.
+W poniższym fragmencie kodu tworzymy nową wersję  z`cycle_hire_osm`rzutowanym CRS (dla zwięzłości pokazano tylko pierwsze 4 wiersze wyniku CRS).
+
+```{r 06-reproj-18, eval=FALSE}
+cycle_hire_osm_projected = st_transform(cycle_hire_osm, "EPSG:27700")
+st_crs(cycle_hire_osm_projected)
+#> Coordinate Reference System:
+#>   User input: EPSG:27700 
+#>   wkt:
+#> PROJCRS["OSGB36 / British National Grid",
+#> ...
+```
+
+Wynikowy obiekt ma nowy CRS z kodem EPSG 27700.
+Ale jak uzyskać więcej informacji na temat tego kodu EPSG lub dowolnego innego kodu?
+Jedną z opcji jest wyszukanie go w Internecie, inną jest sprawdzenie właściwości obiektu CRS:
+
+```{r 06-reproj-19, linewidth=80}
+crs_lnd_new = st_crs("EPSG:27700")
+crs_lnd_new$Name
+crs_lnd_new$proj4string
+crs_lnd_new$epsg
+```
+
+Wynik pokazuje, że kod EPSG 27700 reprezentuje British National Grid, co można było znaleźć, wyszukując w Internecie „[EPSG 27700](https://www.google.com/search?q=CRS+27700)”.
+
+```{block2 06-reproj-21, type="rmdnote"}
+Printing a spatial object in the console automatically returns its coordinate reference system.
+To access and modify it explicitly, use the `st_crs` function, for example, `st_crs(cycle_hire_osm)`.
+```
+
+## Przeprojektowanie geometrii{#reproj-ras}rastrowych
+
+\\index{raster!reprojection}
+\\index{raster!warping}
+\\index{raster!transformation}
+\\index{raster!resampling}
+Koncepcje projekcji opisane w poprzedniej sekcji mają zastosowanie do rastrów.
+Istnieją jednak istotne różnice między przeprojektowaniem wektorów i rastrów:
+transformacja obiektu wektorowego wiąże się ze zmianą współrzędnych każdego wierzchołka, ale nie ma to zastosowania do danych rastrowych.
+Rastry składają się z prostokątnych komórek o tym samym rozmiarze (wyrażonym w jednostkach mapy, takich jak stopnie lub metry), więc zazwyczaj nie jest możliwe oddzielne przekształcenie współrzędnych pikseli.
+W związku z tym przeprojektowanie rastra polega na utworzeniu nowego obiektu rastrowego, często o innej liczbie kolumn i wierszy niż oryginał.
+Następnie należy ponownie oszacować atrybuty, aby nowe piksele mogły zostać „wypełnione” odpowiednimi wartościami.
+Innymi słowy, reprojekcję rastra można traktować jako dwie oddzielne operacje przestrzenne: reprojekcję wektorową zasięgu rastra do innego CRS (sekcja @ref(reproj-vec-geom)) oraz obliczenie nowych wartości pikseli poprzez ponowne próbkowanie (sekcja @ref(resampling)).
+Dlatego w większości przypadków, gdy używane są zarówno dane rastrowe, jak i wektorowe, lepiej unikać reprojekcji rastrów i zamiast tego przeprowadzać reprojekcję wektorów.
+
+```{block2 06-reproj-35a, type="rmdnote"}
+Reprojection of the regular rasters is also known as warping. 
+Additionally, there is a second similar operation called "transformation".
+Instead of resampling all of the values, it leaves all values intact but recomputes new coordinates for every raster cell, changing the grid geometry.
+For example, it could convert the input raster (a regular grid) into a curvilinear grid.
+\index{stars (package)}
+The transformation operation can be performed in R using [the **stars** package](https://r-spatial.github.io/stars/articles/stars5.html).
+```
+
+```{r, include=FALSE}
+#test the above idea
+library(terra)
+library(sf)
+con_raster = rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+con_raster_ea = project(con_raster, "EPSG:32612", method = "bilinear")
+
+con_poly = st_as_sf(as.polygons(con_raster>0))
+con_poly_ea = st_transform(con_poly, "EPSG:32612")
+
+plot(con_raster)
+plot(con_poly, col = NA, add = TRUE, lwd = 4)
+
+plot(con_raster_ea)
+plot(con_poly_ea, col = NA, add = TRUE, lwd = 4)
+```
+
+Proces reprojekcji rastra jest wykonywany za`project()`pomocązpakietu**terra**.
+Podobnie jak`st_transform()`funkcja  pokazana w poprzedniej sekcji,`project()`przyjmuje obiekt przestrzenny (w tym przypadku zbiór danych rastrowych) i pewną reprezentację CRS jako drugi argument.
+Na marginesie, drugim argumentem może być również istniejący obiekt rastrowy z innym CRS.
+
+Przyjrzyjmy się dwóm przykładom transformacji rastrowej: przy użyciu danych kategorycznych i ciągłych.
+Dane dotyczące pokrycia terenu są zazwyczaj przedstawiane za pomocą map kategorycznych.
+Plik`nlcd.tif`zawiera informacje dotyczące niewielkiego obszaru w stanie Utah w USA, uzyskane z[National Land Cover Database 2011](https://www.mrlc.gov/data/nlcd-2011-land-cover-conus)w układzie odniesienia NAD83 / UTM strefa 12N, jak pokazano w wynikach poniższego fragmentu kodu (pokazano tylko pierwszą linię wyników).
+
+```{r 06-reproj-29, results="hide"}
+cat_raster = rast(system.file("raster/nlcd.tif", package = "spDataLarge"))
+crs(cat_raster)
+#> PROJCRS["NAD83 / UTM zone 12N",
+#> ...
+```
+
+W tym regionie wyróżniono osiem klas pokrycia terenu (pełna lista klas pokrycia terenu NLCD2011 znajduje się na[stronie mrlc.gov](https://www.mrlc.gov/data/legends/national-land-cover-database-2011-nlcd2011-legend)):
+
+```{r 06-reproj-30}
+unique(cat_raster)
+```
+
+Podczas przeprojektowywania rastrów kategorycznych szacowane wartości muszą być takie same jak wartości oryginalne.
+Można to zrobić za pomocą metody najbliższego sąsiedztwa (`near`), która ustawia wartość każdej nowej komórki na wartość najbliższej komórki (środkowej) rastra wejściowego.
+Przykładem jest przeprojektowanie`cat_raster`do WGS84, geograficznego CRS dobrze dostosowanego do mapowania internetowego.
+Pierwszym krokiem jest uzyskanie definicji tego CRS.
+Drugim krokiem jest przeprojektowanie rastra za`project()`pomocąfunkcji , która w przypadku danych kategorycznych wykorzystuje metodę najbliższego sąsiedztwa (`near`).
+
+```{r 06-reproj-31}
+cat_raster_wgs84 = project(cat_raster, "EPSG:4326", method = "near")
+```
+
+Wiele właściwości nowego obiektu różni się od poprzedniego, w tym liczba kolumn i wierszy (a zatem liczba komórek), rozdzielczość (przekształcona z metrów na stopnie) oraz zasięg, jak pokazano w tabeli @ref(tab:catraster) (należy zauważyć, że liczba kategorii wzrosła z 8 do 9 z powodu dodania`NA`wartości , a nie z powodu utworzenia nowej kategorii — klasy pokrycia terenu zostały zachowane).
+
+```{r catraster, echo=FALSE}
+tibble(
+  CRS = c("NAD83", "WGS84"),
+  nrow = c(nrow(cat_raster), nrow(cat_raster_wgs84)),
+  ncol = c(ncol(cat_raster), ncol(cat_raster_wgs84)),
+  ncell = c(ncell(cat_raster), ncell(cat_raster_wgs84)),
+  resolution = c(mean(res(cat_raster)), mean(res(cat_raster_wgs84),
+                                             na.rm = TRUE)),
+  unique_categories = c(length(unique(values(cat_raster))),
+                        length(unique(values(cat_raster_wgs84))))) |>
+  knitr::kable(caption = paste("Key attributes in the original (cat\\_raster)", 
+                               "and projected (cat\\_raster\\_wgs84)", 
+                               "categorical raster datasets."),
+               caption.short = paste("Key attributes in the original and", 
+                                     "projected raster datasets"),
+               digits = 4, booktabs = TRUE)
+```
+
+Przeprojektowanie rastrów numerycznych (z`numeric`wartościami`integer`lub w tym przypadku) przebiega według niemal identycznej procedury.
+Zostało to pokazane poniżej na przykładzie`srtm.tif`w**spDataLarge**z[misji Shuttle Radar Topography Mission (SRTM)](https://www2.jpl.nasa.gov/srtm/), które reprezentuje wysokość w metrach nad poziomem morza (wysokość bezwzględna) w układzie odniesienia WGS84 CRS:
+
+```{r 06-reproj-32, out.lines=6}
+con_raster = rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+cat(crs(con_raster))
+```
+
+Przeprojektujemy ten zbiór danych do rzutowanego układu odniesienia CRS, ale*nie*przy użyciu metody najbliższego sąsiedztwa, która jest odpowiednia dla danych kategorycznych.
+Zamiast tego użyjemy metody dwuliniowej, która oblicza wartość komórki wyjściowej na podstawie czterech najbliższych komórek w oryginalnym rasterze.^\[
+Inne metody wymienione w sekcji @ref(resampling) również mogą być tutaj użyte.
+\]
+Wartości w rzutowanym zbiorze danych są średnią ważoną odległością wartości z tych czterech komórek:
+im bliżej komórka wejściowa znajduje się do środka komórki wyjściowej, tym większa jest jej waga.
+Poniższe polecenia tworzą ciąg tekstowy reprezentujący WGS 84 / strefę UTM 12N i przeprojektowują raster do tego CRS przy użyciu`bilinear`metody  (wynik nie jest pokazany).
+
+```{r 06-reproj-34}
+#| eval: false
+con_raster_ea = project(con_raster, "EPSG:32612", method = "bilinear")
+cat(crs(con_raster_ea))
+```
+
+Przeprojektowanie rastra na zmienne numeryczne prowadzi również do zmian wartości i właściwości przestrzennych, takich jak liczba komórek, rozdzielczość i zasięg.Zmiany
+te przedstawiono w tabeli @ref(tab:rastercrs).^\[
+Kolejną niewielką zmianą, która nie została przedstawiona w tabeli @ref(tab:rastercrs), jest to, że klasą wartości w nowym zestawie danych rastrowych jest`numeric`.Wynika
+to z faktu, że`bilinear`metoda  działa z danymi ciągłymi, a wyniki rzadko są przekształcane na wartości całkowite.Może
+to mieć wpływ na rozmiar plików podczas zapisywania zestawów danych rastrowych.
+\]
+
+```{r rastercrs, echo=FALSE}
+tibble(
+  CRS = c("WGS84", "UTM zone 12N"),
+  nrow = c(nrow(con_raster), nrow(con_raster_ea)),
+  ncol = c(ncol(con_raster), ncol(con_raster_ea)),
+  ncell = c(ncell(con_raster), ncell(con_raster_ea)),
+  resolution = c(mean(res(con_raster)), mean(res(con_raster_ea), 
+                                             na.rm = TRUE)),
+  mean = c(mean(values(con_raster)), mean(values(con_raster_ea), 
+                                          na.rm = TRUE))) |>
+  knitr::kable(caption = paste("Key attributes in the original (con\\_raster)", 
+                               "and projected (con\\_raster\\_ea) continuous raster", 
+                               "datasets."),
+               caption.short = paste("Key attributes in the original and", 
+                                     "projected raster datasets"),
+               digits = 4, booktabs = TRUE)
+```
+
+```{block2 06-reproj-35, type="rmdnote"}
+Of course, the limitations of 2D Earth projections apply as much to vector as to raster data.
+At best we can comply with two out of three spatial properties (distance, area, direction).
+Therefore, the task at hand determines which projection to choose. 
+For instance, if we are interested in a density (points per grid cell or inhabitants per grid cell), we should use an equal-area projection (see also Chapter \@ref(location)).
+```
+
+## Niestandardowe projekcje map{#mapproj}
+
+\\index{CRS!custom}
+Ustalone CRS uchwycone przez`AUTHORITY:CODE`identyfikatory, takie jak`EPSG:4326`, dobrze nadają się do wielu zastosowań.
+Jednak w niektórych przypadkach pożądane jest stosowanie alternatywnych projekcji lub tworzenie niestandardowych CRS.
+W sekcji @ref(which-crs) wymieniono powody stosowania niestandardowych CRS i przedstawiono kilka możliwych podejść.
+Poniżej pokazujemy, jak zastosować te pomysły w języku R.
+
+Jednym z nich jest wykorzystanie istniejącej definicji WKT układu odniesienia, zmodyfikowanie niektórych jego elementów, a następnie użycie nowej definicji do ponownej projekcji.
+Można to zrobić dla wektorów przestrzennych z`st_crs()`i`st_transform()`, oraz dla rastrów przestrzennych z`crs()`i`project()`, jak pokazano w poniższym przykładzie, który przekształcaobiekt`zion`  do niestandardowego układu odniesienia azymutalnego równodległego (AEQD).
+
+```{r}
+zion = read_sf(system.file("vector/zion.gpkg", package = "spDataLarge"))
+```
+
+Korzystanie z niestandardowego układu odniesienia AEQD wymaga znajomości współrzędnych punktu środkowego zbioru danych w stopniach (geograficzny układ odniesienia).
+W naszym przypadku informacje te można uzyskać, obliczając centroidobszaru`zion`  i przekształcając go do WGS84.
+
+```{r, warning=FALSE}
+zion_centr = st_centroid(zion)
+zion_centr_wgs84 = st_transform(zion_centr, "EPSG:4326")
+st_as_text(st_geometry(zion_centr_wgs84))
+```
+
+Następnie możemy użyć nowo uzyskanych wartości do aktualizacji definicji WKT układu odniesienia AEQD widocznej poniżej.
+Należy zauważyć, że zmodyfikowaliśmy tylko dwie wartości poniżej —`"Central_Meridian"`na długość geograficzną i`"Latitude_Of_Origin"`na szerokość geograficzną naszego środka ciężkości.
+
+Ostatnim
+
+```{r}
+my_wkt = 'PROJCS["Custom_AEQD",
+ GEOGCS["GCS_WGS_1984",
+  DATUM["WGS_1984",
+   SPHEROID["WGS_1984",6378137.0,298.257223563]],
+  PRIMEM["Greenwich",0.0],
+  UNIT["Degree",0.0174532925199433]],
+ PROJECTION["Azimuthal_Equidistant"],
+ PARAMETER["Central_Meridian",-113.0263],
+ PARAMETER["Latitude_Of_Origin",37.29818],
+ UNIT["Meter",1.0]]'
+```
+
+krokiem tego podejścia jest przekształcenie naszego oryginalnego obiektu (`zion`) do naszego nowego niestandardowego układu odniesienia (`zion_aeqd`)
+
+```{r}
+zion_aeqd = st_transform(zion, my_wkt)
+```
+
+Projekcje niestandardowe można również tworzyć interaktywnie, na przykład za pomocą aplikacji internetowej[Projection Wizard](https://projectionwizard.org/#) [@savric_projection_2016] .
+Ta strona internetowa umożliwia wybranie zakresu przestrzennego danych i właściwości zniekształcenia, a następnie zwraca listę możliwych projekcji.
+Lista zawiera również definicje WKT projekcji, które można skopiować i wykorzystać do ponownych projekcji.
+Szczegółowe informacje na temat tworzenia niestandardowych definicji CRS za pomocą ciągów znaków WKT można znaleźć w @opengeospatialconsortium\_wellknown\_2019.
+
+Do tworzenia niestandardowych projekcji można również używaćciągówznaków{CRS!proj-string}
+PROJ, akceptując ograniczenia związane z projekcjami, zwłaszcza w przypadku geometrii obejmujących duże obszary geograficzne, o których mowa w sekcji @ref(crs-in-r).
+Opracowano wiele projekcji, które można ustawić za pomocą`+proj=`elementu  ciągów PROJ, a dziesiątki projektów opisano szczegółowo nasamej[stronie internetowej](https://proj.org/operations/projections/index.html)[PROJ](https://proj.org/operations/projections/index.html).
+
+Podczas mapowania świata z zachowaniem relacji obszarów popularnym i często rozsądnym wyborem jest projekcja Mollweide'a, przedstawiona na rysunku @ref(fig:mollproj) [@jenny_guide_2017] .
+Aby użyć tej projekcji, musimy ją określić za pomocą elementu proj-stringwfunkcji`st_transform`:`"+proj=moll"`
+
+Podczas mapowania
+
+```{r 06-reproj-22}
+world_mollweide = st_transform(world, crs = "+proj=moll")
+```
+
+```{r mollproj, fig.cap="Mollweide projection of the world.", warning=FALSE, message=FALSE, echo=FALSE}
+library(tmap)
+world_mollweide_gr = st_graticule(lat = c(-89.9, seq(-80, 80, 20), 89.9)) |>
+  st_transform(crs = "+proj=moll")
+tm_shape(world_mollweide_gr) +
+  tm_lines(col = "gray") +
+  tm_shape(world_mollweide) +
+  tm_borders(col = "black") 
+```
+
+świata często pożądane jest zminimalizowanie zniekształceń wszystkich właściwości przestrzennych (powierzchni, kierunku, odległości).
+Jedną z najpopularniejszych projekcji pozwalających to osiągnąć jest[projekcja Winkel tripel](https://www.winkel.org/other/Winkel%20Tripel%20Projections.htm), przedstawiona na rysunku @ref(fig:wintriproj).^\[
+Ta projekcja jest używana między innymi przez National Geographic Society.
+\]
+Wynik został utworzony za pomocą następującego polecenia:
+
+```{r 06-reproj-23}
+world_wintri = st_transform(world, crs = "+proj=wintri")
+```
+
+```{r 06-reproj-23-tests, eval=FALSE, echo=FALSE}
+world_wintri = lwgeom::st_transform_proj(world, crs = "+proj=wintri")
+world_wintri2 = st_transform(world, crs = "+proj=wintri")
+world_tissot = st_transform(world, crs = "+proj=tissot +lat_1=60 +lat_2=65")
+waldo::compare(world_wintri$geom[1], world_wintri2$geom[1])
+world_tpers = st_transform(world, crs = "+proj=tpers +h=5500000 +lat_0=40")
+plot(st_cast(world_tpers, "MULTILINESTRING")) # fails
+plot(st_coordinates(world_tpers)) # fails
+world_tpers_complete = world_tpers[st_is_valid(world_tpers), ] 
+world_tpers_complete = world_tpers_complete[!st_is_empty(world_tpers_complete), ] 
+plot(world_tpers_complete["pop"]) 
+```
+
+```{r wintriproj, fig.cap="Winkel tripel projection of the world.", echo=FALSE}
+world_wintri_gr = st_graticule(lat = c(-89.9, seq(-80, 80, 20), 89.9)) |>
+  st_transform(crs = "+proj=wintri")
+library(tmap)
+tm_shape(world_wintri_gr) + tm_lines(col = "gray") +
+  tm_shape(world_wintri) + tm_borders(col = "black")
+```
+
+```{block2 06-reproj-24, type="rmdnote", echo=FALSE}
+The two main functions for transformation of simple features coordinates are `sf::st_transform()`, and `sf::sf_project()`.
+`st_transform()` uses the GDAL interface to PROJ, while `sf_project()` (which works with two-column numeric matrices, representing points) uses PROJ directly.
+`st_tranform()` is appropriate for most situations, and provides a set of the most often used parameters and well-defined transformations.
+`sf_project()` may be suited for point transformations when speed is important.
+```
+
+```{r 06-reproj-25, eval=FALSE, echo=FALSE}
+# demo of sf_project
+mat_lonlat = as.matrix(data.frame(x = 0:20, y = 50:70))
+plot(mat_lonlat)
+mat_projected = sf_project(from = st_crs(4326)$proj4string, to = st_crs(27700)$proj4string, pts = mat_lonlat)
+plot(mat_projected)
+```
+
+Ponadto parametry ciągu proj można modyfikować w większości definicji CRS, na przykład środek projekcji można dostosować za pomocąparametrów`+lon_0``+lat_0`i.
+Poniższy kod przekształca współrzędne do projekcji azymutalnej o równej powierzchni Lamberta,której środek znajduje się na długości i szerokości geograficznej Nowego Jorku (rysunek @ref(fig:laeaproj2)).
+
+```{r 06-reproj-27}
+world_laea2 = st_transform(world,
+                           crs = "+proj=laea +x_0=0 +y_0=0 +lon_0=-74 +lat_0=40")
+```
+
+```{r laeaproj2, fig.cap="Lambert azimuthal equal-area projection of the world centered on New York City.", fig.scap="Lambert azimuthal equal-area projection centered on New York City.", warning=FALSE, echo=FALSE}
+world_laea2_g = st_graticule(ndiscr = 10000) |>
+  st_transform("+proj=laea +x_0=0 +y_0=0 +lon_0=-74 +lat_0=40.1 +ellps=WGS84 +no_defs") |>
+  st_geometry()
+tm_shape(world_laea2_g) + tm_lines(col = "gray") +
+  tm_shape(world_laea2) + tm_borders(col = "black")
+```
+
+Więcej informacji na temat modyfikacji CRS można znaleźć wdokumentacji[Using PROJ](https://proj.org/usage/index.html).
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_07-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+

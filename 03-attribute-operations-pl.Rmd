@@ -1,0 +1,833 @@
+# Operacje na danych{#attr}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+# atrybutowych
+
+## Wymagania wstępne{-}
+
+- W tym rozdziale wymagane jest zainstalowanie i dołączenie następujących pakietów:
+
+```{r 03-attribute-operations-1, message=FALSE}
+library(sf)      # vector data package introduced in Chapter 2
+library(terra)   # raster data package introduced in Chapter 2
+library(dplyr)   # tidyverse package for data frame manipulation
+```
+
+- Wykorzystuje on**spData**, który ładuje zestawy danych używane w przykładach kodu w tym rozdziale:
+
+- Upewnij
+
+```{r 03-attribute-operations-2, results="hide"}
+#| message: FALSE
+#| results: hide
+library(spData)  # spatial data package introduced in Chapter 2
+```
+
+- się również,że zainstalowałeśpakiet**tidyr**lub**tidyverse**,którego jest on częścią, jeśli chcesz wykonać operacje „porządkowania” danych w sekcji @ref(vec-attr-creation).
+
+## Wprowadzenie
+
+\\indexDane{attribute}
+atrybutowe to informacje nieprzestrzenne powiązane z danymi geograficznymi (geometrycznymi).Prostym
+przykładem jest przystanek autobusowy: jego położenie jest zazwyczaj reprezentowane przez współrzędne szerokości i długości geograficznej (dane geometryczne), oprócz jego nazwy.
+Na przykład przystanek[Elephant \& Castle / New Kent Road](https://www.openstreetmap.org/relation/6610626)w Londynie ma współrzędne$-0.098$stopni długości geograficznej i 51,495 stopni szerokości geograficznej,które można przedstawić jako`POINT (-0.098 51.495)`wreprezentacji`sfc`opisanej w rozdziale @ref(spatial-class).
+Atrybuty, takie jak*nazwa*\\index{attribute}, obiektu POINT (używając terminologii obiektów prostych) są tematem niniejszego rozdziału.
+
+```{r, eval=FALSE, echo=FALSE}
+# Aim: find a bus stop in central London
+library(osmdata)
+london_coords = c(-0.1, 51.5)
+london_bb = c(-0.11, 51.49, -0.09, 51.51)
+bb = tmaptools::bb(london_bb)
+osm_data = opq(bbox = london_bb) |> 
+  add_osm_feature(key = "highway", value = "bus_stop") |> 
+  osmdata_sf()
+osm_data_points = osm_data$osm_points
+osm_data_points[4, ]
+point_vector = round(sf::st_coordinates(osm_data_points[4, ]), 3)
+point_df = data.frame(name = "London bus stop", point_vector)
+point_sf = sf::st_as_sf(point_df, coords = c("X", "Y"))
+```
+
+\\index{attribute}
+Innym przykładem jest wartość wysokości (atrybut) dla konkretnej komórki siatki w danych rastrowych.
+W przeciwieństwie do modelu danych wektorowych, model danych rastrowych przechowuje współrzędne komórki siatki pośrednio, co oznacza, że rozróżnienie między atrybutem a informacją przestrzenną jest mniej wyraźne.
+Aby zilustrować tę kwestię, pomyśl o pikselu w wierszu 3 i kolumnie 4 macierzy rastrowej.
+Jego położenie przestrzenne jest określone przez jego indeks w macierzy: przesuń się od punktu początkowego o cztery komórki w kierunku x (zazwyczaj na wschód i w prawo na mapach) i trzy komórki w kierunku y (zazwyczaj na południe i w dół).
+*Rozdzielczość*rastraokreśla odległość dla każdego kroku x i y, która jest określona w*nagłówku*.
+Nagłówek jest istotnym elementem zbiorów danych rastrowych, który określa, w jaki sposób piksele odnoszą się do współrzędnych przestrzennych (zobacz także rozdział @ref(spatial-operations)).
+
+W tym rozdziale omówiono sposób manipulowania obiektami geograficznymi na podstawie atrybutów, takich jak nazwy przystanków autobusowych w zbiorze danych wektorowych i wysokości pikseli w zbiorze danych rastrowych.
+W przypadku danych wektorowych oznacza to techniki takie jak tworzenie podzbiorów i agregacja (zobacz sekcje @ref(vector-attribute-subsetting) do @ref(vector-attribute-aggregation)).
+Sekcje @ref(vector-attribute-joining) i @ref(vec-attr-creation) pokazują odpowiednio, jak łączyć dane z prostymi obiektami cech przy użyciu wspólnego identyfikatora oraz jak tworzyć nowe zmienne.
+Każda z tych operacji ma swój odpowiednik
+przestrzenny:na przykład operator`[`  w podstawowym R działa tak samo w przypadku podzbiorów obiektów opartych na ich atrybutach, jak i obiektów przestrzennych; można również łączyć atrybuty w dwóch zestawach danych geograficznych za pomocą połączeń przestrzennych.
+To dobra wiadomość: umiejętności nabyte w tym rozdziale można przenosić między różnymi dziedzinami.
+
+Po dogłębnym omówieniu różnych typówoperacjinaatrybutach*wektorowych*w następnej sekcji,omówione zostaną operacje na danych atrybutów*rastrowych*.
+Zademonstrowano tworzenie warstw rastrowych zawierających atrybuty ciągłe i kategoryczne oraz ekstrakcję wartości komórek z jednej lub więcej warstw (podzbiory rastrów) (sekcja @ref(raster-subsetting)).
+Sekcja @ref(summarizing-raster-objects) zawiera przegląd „globalnych” operacji rastrowych, które można wykorzystać do podsumowania całych zbiorów danych rastrowych.
+Rozdział @ref(spatial-operations) rozszerza przedstawione tutaj metody na świat przestrzenny.
+
+## Manipulowanie atrybutami wektorowymi
+
+\\index{attribute}
+Zbiory danych wektorowych są dobrze obsługiwane w języku R dziękiklasie`sf`, która rozszerza podstawową klasę R`data.frame`.
+Podobnie jak ramki danych,`sf`obiekty  mają jedną kolumnę na zmienną atrybutową (np. „nazwa”) i jeden wiersz na obserwację lub*cechę*(np. na przystanek autobusowy).
+`sf`Obiekty różnią się od podstawowych ram danych, ponieważ mają`geometry`kolumnę klasy`sfc`,która może zawierać szereg elementów geograficznych (pojedyncze i „wielokrotne” punkty, linie i wielokąty) na każdy wiersz.
+Zostało to opisane w rozdziale @ref(spatial-class), który pokazał, jak*metody generyczne,*takie jak`plot()`i`summary()`działają z`sf`obiektami .
+**sf**zapewnia również generyki, które pozwalają`sf`obiektom zachowywać się jak zwykłe ramy danych, co widać po wydrukowaniu metod klasy:
+
+```{r 03-attribute-operations-3, eval=FALSE}
+methods(class = "sf") # methods for sf objects, first 12 shown
+```
+
+```{r 03-attribute-operations-4}
+#> [1] [             [[<-          $<-           aggregate    
+#> [5] as.data.frame cbind         coerce        filter       
+#> [9] identify      initialize    merge         plot        
+```
+
+```{r 03-attribute-operations-5, eval=FALSE, echo=FALSE}
+# Another way to show sf methods:
+attributes(methods(class = "sf"))$info |>
+  dplyr::filter(!visible)
+```
+
+Wiele z nich (`aggregate()`,`cbind()`,`merge()`,`rbind()`i`[`) służy do manipulowania ramami danych.
+`rbind()`Na przykład łączy wiersze ram danych, jeden „na drugim”.
+`$<-`tworzy nowe kolumny.Kluczową cechą
+obiektów`sf`  jest to, że przechowują one dane przestrzenne i nieprzestrzenne w ten sam sposób, jako kolumny w`data.frame`.
+
+```{block2 03-attribute-operations-6, type="rmdnote"}
+The geometry column of `sf` objects is typically called `geometry` or `geom`, but any name can be used.
+The following command, for example, creates a geometry column named g:
+  
+`st_sf(data.frame(n = world$name_long), g = world$geom)`
+
+This enables geometries imported from spatial databases to have a variety of names such as `wkb_geometry` and `the_geom`.
+```
+
+`sf`Obiekty mogą również rozszerzać klasy tidyverse dla ram danychoraz`tbl``tbl_df`.\\index{tidyverse (package)}
+Dzięki temu**sf**umożliwia wykorzystanie pełnego potencjału funkcji analizy danych języka R w odniesieniu do danych geograficznych, niezależnie od tego, czy do analizy danych używasz funkcji podstawowych języka R, czy funkcji tidyverse.
+\\index{tibble}
+Obiekty**sf**mogą być również używane z wysokowydajnym pakietem do przetwarzania danych**data.table**, chociaż, jak opisano w wydaniu[`Rdatatable/data.table#2273`](https://github.com/Rdatatable/data.table/issues/2273), nie są one w pełni[kompatybilne](https://github.com/Rdatatable/data.table/issues/5352)z`sf`obiektami.
+Przed skorzystaniem z tych możliwości warto przypomnieć sobie, jak odkrywać podstawowe właściwości obiektów danych wektorowych.
+Zacznijmy od użycia funkcji podstawowego języka R, aby poznać zbiór`world`danych zpakietu**spData**:
+
+```{r 03-attribute-operations-7}
+class(world) # it's an sf object and a (tidy) data frame
+dim(world)   # it is a two-dimensional object, with 177 rows and 11 columns
+```
+
+\\index{attribute!dropping geometries}
+`world`zawiera dziesięć kolumn niegeograficznych (i jedną kolumnę listy geometrii) z prawie 200 wierszami reprezentującymi kraje świata.
+Funkcja`st_drop_geometry()`zachowuje tylko dane atrybutówobiektu`sf`, innymi słowy usuwa jego geometrię:
+
+```{r 03-attribute-operations-8}
+world_df = st_drop_geometry(world)
+class(world_df)
+ncol(world_df)
+```
+
+Usunięcie kolumny geometrii przed rozpoczęciem pracy z danymi atrybutów może być przydatne; procesy manipulacji danymi mogą przebiegać szybciej, gdy dotyczą tylko danych atrybutów,a kolumny geometrii nie zawsze są potrzebne.
+W większości przypadków jednak sensowne jest zachowanie kolumny geometrii, co wyjaśnia, dlaczego kolumna ta jest „trwała” (pozostaje po większości operacji na atrybutach, chyba że zostanie specjalnie usunięta).
+Operacje na danych nieprzestrzennychdotyczące`sf`obiektów zmieniają geometrię obiektu tylko wtedy, gdy jest to właściwe (np. poprzez rozpuszczenie granic między sąsiednimi wielokątami po agregacji).
+Opanowanie umiejętności manipulowania danymi atrybutów geograficznych oznacza opanowanie umiejętności manipulowania ramkami danych.
+
+W wielu zastosowaniachpakiet{tidyverse (package)}tidyverse\\index**dplyr** [@R-dplyr] oferuje skuteczne podejście do pracy z ramami danych.
+Kompatybilność z Tidyverse jest zaletą**sf**w porównaniu z jego poprzednikiem**sp**, ale istnieją pewne pułapki, których należy unikać (szczegółowe informacjemożna znaleźć w dodatkowej`tidyverse-pitfalls`vignette na stronie[geocompx.org](https://geocompx.github.io/geocompkg/articles/tidyverse-pitfalls.html)).
+
+### Podzbiory atrybutów wektorowych
+
+Podstawowe metody tworzenia podzbiorów w R obejmują operator`[`i funkcję`subset()`.
+Kluczowefunkcje tworzenia podzbiorów**w dplyr**to`filter()`i`slice()`dla podzbiorów wierszy oraz`select()`dla podzbiorów kolumn.
+Oba podejścia zachowują składniki przestrzenne danych atrybutowych w`sf`obiektach, natomiast użycie operatora`$`lubfunkcji**dplyr**`pull()`w celu zwrócenia pojedynczej kolumny atrybutów jako wektora spowoduje utratę danych geometrycznych, jak zobaczymy poniżej
+.index{attribute!subsetting}
+Ta sekcja skupia się na podzbiorachram`sf`danych; aby uzyskać więcej informacji na temat podzbiorów wektorów i ram danych niegeograficznych ,zalecamy przeczytanie odpowiedniosekcji[2\.7](https://cran.r-project.org/doc/manuals/r-release/R-intro.html#Index-vectors)książki*An Introduction to R* [@rcoreteam_introduction_2021] oraz rozdziału[4](https://adv-r.hadley.nz/subsetting.html)książki*Advanced R Programming* [@wickham_advanced_2019] .
+
+Operator{attribute!subsetting}
+`[`  może tworzyć podzbiory zarówno wierszy, jak i kolumn.
+Indeksy umieszczone w nawiasach kwadratowych bezpośrednio po nazwie obiektu ram danych określają elementy, które mają zostać zachowane.
+Polecenie`object[i, j]`oznacza „zwróć wiersze reprezentowane przez`i`i kolumny reprezentowane przez`j`”, gdzie`i`i`j`zazwyczaj zawierają liczby całkowite lub`TRUE`s i`FALSE`s (indeksy mogą być również ciągami znaków, wskazującymi nazwy wierszy lub kolumn).
+`object[5, 1:3]`na przykład oznacza „zwróć dane zawierające piąty wiersz i kolumny od 1 do 3: wynikiem powinna być ramka danych zawierająca tylko 1 wiersz i 3 kolumny oraz czwartą kolumnę geometryczną, jeśli jest to`sf`obiekt .
+Pozostawienie`i`lub`j`pustego powoduje zwrócenie wszystkich wierszy lub kolumn, więc`world[1:5, ]`zwraca pierwsze pięć wierszy i wszystkie 11 kolumn.
+Poniższe przykłady pokazują tworzenie podzbiorów za pomocą podstawowego języka R.
+Zgadnij liczbę wierszy i kolumn w  ramkach`sf`danych zwróconych przez każde polecenie i sprawdź wyniki na swoim komputerze (więcej ćwiczeń znajdziesz na końcu rozdziału):
+
+```{r 03-attribute-operations-9, eval=FALSE}
+world[1:6, ]    # subset rows by position
+world[, 1:3]    # subset columns by position
+world[1:6, 1:3] # subset rows and columns by position
+world[, c("name_long", "pop")] # columns by name
+world[, c(T, T, F, F, F, F, F, T, T, F, F)] # by logical indices
+world[, 888] # an index representing a non-existent column
+```
+
+```{r, eval=FALSE, echo=FALSE}
+# these fail
+world[c(1, 5), c(T, T)]
+world[c(1, 5), c(T, T, F, F, F, F, F, T, T, F, F, F)]
+```
+
+Przykład wykorzystania`logical`wektorów do tworzenia podzbiorów przedstawiono w poniższym fragmencie kodu.
+Tworzy on nowy obiektzawierający kraje o powierzchni mniejszej niż 10 000 km^2^.
+
+```{r 03-attribute-operations-10}
+i_small = world$area_km2 < 10000
+summary(i_small) # a logical vector
+small_countries = world[i_small, ]
+```
+
+Pośrednik`i_small`(skrót od indeksu reprezentującego małe kraje) jest wektorem logicznym
+
+,`small_countries`
+
+którego można użyć do utworzenia podzbioru siedmiu najmniejszych krajów w`world`pod względem powierzchni.Bardziej
+zwięzłe polecenie, które pomija obiekt pośrednik, generuje ten sam wynik:
+
+```{r 03-attribute-operations-11}
+small_countries = world[world$area_km2 < 10000, ]
+```
+
+Podstawowa funkcja R`subset()`zapewnia inny sposób osiągnięcia tego samego wyniku:
+
+```{r 03-attribute-operations-12, eval=FALSE}
+small_countries = subset(world, area_km2 < 10000)
+```
+
+\\index{attribute!subsetting}
+Podstawowe funkcje R są dojrzałe, stabilne i szeroko stosowane, co czyni je solidnym wyborem, zwłaszcza w kontekstach, w których kluczowe znaczenie mają powtarzalność i niezawodność.
+Funkcje**dplyr**umożliwiają „uporządkowane” przepływy pracy, które niektórzy (w tym autorzy tej książki) uważają za intuicyjne i produktywne w interaktywnej analizie danych, zwłaszcza w połączeniu z edytorami kodu, takimi jak RStudio, które umożliwiają[automatyczne](https://support.posit.co/hc/en-us/articles/205273297-Code-Completion-in-the-RStudio-IDE)[uzupełnianie](https://support.posit.co/hc/en-us/articles/205273297-Code-Completion-in-the-RStudio-IDE)nazw kolumn.
+Poniżej przedstawionokluczowe funkcje służące do tworzenia podzbiorów ram danych (w tym`sf`ram danych) za pomocąfunkcji**dplyr**.
+
+```{r, echo=FALSE, eval=FALSE}
+# Aim: benchmark base vs. dplyr subsetting
+# Could move elsewhere? 
+i = sample(nrow(world), size = 10)
+benchmark_subset = bench::mark(
+  world[i, ],
+  world |> slice(i)
+)
+benchmark_subset[c("expression", "itr/sec", "mem_alloc")]
+# # October 2021 on laptop with CRAN version of dplyr:
+# # A tibble: 2 × 3
+#   expression         `itr/sec` mem_alloc
+#   <bch:expr>             <dbl> <bch:byt>
+# 1 world[i, ]             1744.    5.55KB
+# 2 world |> slice(i)      671.    4.45KB
+```
+
+`select()`wybiera kolumny według nazwy lub pozycji.
+Na przykład można wybrać tylko dwie kolumny,`name_long`i`pop`, za pomocą następującego polecenia:
+
+```{r 03-attribute-operations-14}
+world1 = select(world, name_long, pop)
+names(world1)
+```
+
+Uwaga: podobnie jak w przypadku równoważnego polecenia w podstawowym R (`world[, c("name_long", "pop")]`),kolumna`geom`stickypozostaje.umożliwia
+`select()`również wybór zakresu kolumn za pomocąoperatora`:`:
+
+```{r 03-attribute-operations-15}
+# all columns between name_long and pop (inclusive)
+world2 = select(world, name_long:pop)
+```
+
+Można usunąć określone kolumny za pomocą`-`operatora :
+
+```{r 03-attribute-operations-16}
+# all columns except subregion and area_km2 (inclusive)
+world3 = select(world, -subregion, -area_km2)
+```
+
+Podzbiór i zmiana nazwy kolumn jednocześnie za pomocą`new_name = old_name`składni :
+
+```{r 03-attribute-operations-17}
+world4 = select(world, name_long, population = pop)
+```
+
+Warto zauważyć, że powyższe polecenie jest bardziej zwięzłe niż jego odpowiednik w podstawowym R, który wymaga dwóch wierszy kodu:
+
+```{r 03-attribute-operations-18, eval=FALSE}
+world5 = world[, c("name_long", "pop")] # subset columns by name
+names(world5)[names(world5) == "pop"] = "population" # rename column manually
+```
+
+`select()`współpracuje również z „funkcjami pomocniczymi” do bardziej zaawansowanych operacji podziału na podzbiory, w tym`contains()`,`starts_with()`i`num_range()`(szczegółowe informacje`?select`można znaleźć na stronie pomocy).
+
+Większośćczasowników**dplyr**zwraca ramkę danych, ale można wyodrębnić pojedynczą kolumnę jako wektor za pomocą`pull()`.
+Ten sam wynik można uzyskać w podstawowym R za pomocą operatorów podziału na`$`podzbiory listyi`[[`. Trzy poniższe polecenia zwracają ten sam wektor numeryczny:
+
+```{r 03-attribute-operations-21, eval=FALSE}
+pull(world, pop)
+world$pop
+world[["pop"]]
+```
+
+```{r 03-attribute-operations-19, eval=FALSE, echo=FALSE}
+# create throw-away data frame
+d = data.frame(pop = 1:10, area = 1:10)
+# return data frame object when selecting a single column
+d[, "pop", drop = FALSE] # equivalent to d["pop"]
+select(d, pop)
+# return a vector when selecting a single column
+d[, "pop"]
+pull(d, pop)
+```
+
+```{r 03-attribute-operations-20, echo=FALSE, eval=FALSE}
+x1 = d[, "pop", drop = FALSE] # equivalent to d["pop"]
+x2 = d["pop"]
+identical(x1, x2)
+```
+
+`slice()`jest odpowiednikiem wiersza`select()`.
+Na przykład poniższy fragment kodu wybiera wiersze od 1 do 6:
+
+```{r 03-attribute-operations-22, eval=FALSE}
+slice(world, 1:6)
+```
+
+`filter()`jestodpowiednikiemfunkcjiw`subset()`podstawowym R.
+Zachowuje tylko wiersze spełniające określone kryteria, np. tylko kraje o powierzchni poniżej określonego progu lub o wysokiej średniej długości życia, jak pokazano w poniższych przykładach:
+
+```{r 03-attribute-operations-23, eval=FALSE}
+world7 = filter(world, area_km2 < 10000)  # countries with a small area
+world7 = filter(world, lifeExp > 82)      # with high life expectancy
+```
+
+Standardowy zestaw operatorów porównania można stosować wfunkcji`filter()`, jak pokazano w tabeli @ref(tab:operators).
+
+```{r operators0, echo=FALSE}
+if (knitr::is_html_output()){
+  operators = c("`==`", "`!=`", "`>`, `<`", "`>=`, `<=`", "`&`, <code>|</code>, `!`")
+} else {
+  operators = c("==", "!=", ">, <", ">=, <=", "&, |, !")
+}
+```
+
+```{r operators, echo=FALSE}
+operators_exp = c("Equal to", "Not equal to", "Greater/Less than",
+                  "Greater/Less than or equal", 
+                  "Logical operators: And, Or, Not")
+knitr::kable(tibble(Symbol = operators, Name = operators_exp), 
+             caption = "Comparison operators that return Boolean (true/false) values.",
+             caption.short = "Comparison operators.",
+             booktabs = TRUE)
+```
+
+### Łączenie poleceń za pomocą potoków
+
+{pipe operator}
+Kluczem do przepływów pracy przy użyciufunkcji**dplyr**jestoperator`%>%`[„pipe”](https://r4ds.had.co.nz/pipes.html)(lub, od czasu pojawienia się języka R`4.1.0`,natywny potok`|>`), którego nazwa pochodzi od potoku Unix`|` [@grolemund_r_2016] .
+Potoki umożliwiają tworzenie ekspresyjnego kodu: wynik poprzedniej funkcji staje się pierwszym argumentem następnej funkcji, umożliwiając*łączenie*.
+Zostało to zilustrowane poniżej, gdzie z zestawu`world`danychfiltrowane są tylko kraje azjatyckie, a następnie obiekt jest poddawany podzbiórowi według kolumn (`name_long`i`continent`) i pierwszych pięciu wierszy (wynik nie jest pokazany).
+
+```{r 03-attribute-operations-24}
+world7 = world |>
+  filter(continent == "Asia") |>
+  select(name_long, continent) |>
+  slice(1:5)
+```
+
+Powyższy fragment pokazuje, jak operator potoku pozwala na zapisywanie poleceń w jasnej kolejności:
+powyższe są wykonywane od góry do dołu (wiersz po wierszu) i od lewej do prawej.
+Alternatywą dla operacji łańcuchowych są zagnieżdżone wywołania funkcji, które są trudniejsze do odczytania:
+
+```{r 03-attribute-operations-25}
+world8 = slice(
+  select(
+    filter(world, continent == "Asia"),
+    name_long, continent),
+  1:5)
+```
+
+Inną alternatywą jest podzielenie operacji na wiele samodzielnych wierszy, co jest zalecane podczas tworzenia nowych pakietów R. Podejście to ma tę zaletę, że pozwala zapisać wyniki pośrednie pod odrębnymi nazwami, które można później sprawdzić w celu debugowania (podejście to ma jednak wadę w postaci nadmiernej szczegółowości i zagracenia środowiska globalnego podczas przeprowadzania analizy interaktywnej):
+
+```{r 03-attribute-operations-25-2}
+world9_filtered = filter(world, continent == "Asia")
+world9_selected = select(world9_filtered, continent)
+world9 = slice(world9_selected, 1:5)
+```
+
+Każde podejście ma swoje zalety i wady, których znaczenie zależy od stylu programowania i zastosowań.
+W przypadku interaktywnej analizy danych, która jest tematem tego rozdziału, operacje potokowe są szybkie i intuicyjne, zwłaszcza w połączeniu zeskrótami[RStudio](https://support.posit.co/hc/en-us/articles/200711853-Keyboard-Shortcuts-in-the-RStudio-IDE)/[VSCode](https://github.com/REditorSupport/vscode-R/wiki/Keyboard-shortcuts)do tworzenia potoków i[autouzupełniania](https://support.posit.co/hc/en-us/articles/205273297-Code-Completion-in-the-RStudio-IDE)nazw zmiennych.
+
+### Agregacja atrybutów wektorowych
+
+\\indeks{attribute!aggregation}
+\\indeks{aggregation}
+Agregacja polega na podsumowaniu danych za pomocą jednej lub więcej „zmiennych grupujących”, zazwyczaj pochodzących z kolumn w ramce danych, które mają zostać zagregowane (agregacja geograficzna zostanie omówiona w następnym rozdziale).
+Przykładem agregacji atrybutów jest obliczenie liczby ludności na każdym kontynencie na podstawie danych na poziomie krajowym (jeden wiersz na kraj).
+Zbiór`world`danych zawiera niezbędne elementy: kolumny`pop`i`continent`, odpowiednio populację i zmienną grupującą.
+Celem jest znalezienie  populacji`sum()`krajów dla każdego kontynentu, co daje mniejszą ramkę danych (agregacja jest formą redukcji danych i może być przydatnym wczesnym krokiem podczas pracy z dużymi zbiorami danych).
+Można to zrobić za pomocą podstawowej funkcji Rw`aggregate()`następujący sposób:
+
+```{r 03-attribute-operations-26}
+world_agg1 = aggregate(pop ~ continent, FUN = sum, data = world,
+                       na.rm = TRUE)
+class(world_agg1)
+```
+
+Wynikiem jest ramka danych nieprzestrzennych z sześcioma wierszami, po jednym na kontynent, i dwiema kolumnami zawierającymi nazwę i populację każdego kontynentu (patrz tabela @ref(tab:continents) z wynikami dla trzech najbardziej zaludnionych kontynentów).
+
+`aggregate()`jest[funkcją](https://adv-r.hadley.nz/s3.html#s3-methods)[ogólną](https://adv-r.hadley.nz/s3.html#s3-methods), co oznacza, że zachowuje się różnie w zależności od danych wejściowych.
+**sf**udostępnia metodę`aggregate.sf()`która jest aktywowana automatycznie, gdy`x`jestobiektem`sf`  ipodano argument`by`:
+
+```{r 03-attribute-operations-27}
+world_agg2 = aggregate(world["pop"], by = list(world$continent), FUN = sum, 
+                       na.rm = TRUE)
+class(world_agg2)
+nrow(world_agg2)
+```
+
+Wynikowy`world_agg2`obiekt  jest obiektem przestrzennym zawierającym osiem cech reprezentujących kontynenty świata (i otwarty ocean).
+
+\\index{attribute!aggregation}
+`group_by() |> summarize()`jestodpowiednikiem`aggregate()`**dplyr**.Zmienne
+grupujące są zdefiniowane wfunkcji`group_by()`,a formuła agregacji jest zdefiniowana wfunkcji`summarize()`, jak pokazano poniżej:
+
+```{r 03-attribute-operations-28}
+world_agg3 = world |>
+  group_by(continent) |>
+  summarize(pop = sum(pop, na.rm = TRUE))
+```
+
+Podejście to może wydawać się bardziej złożone, ale ma swoje zalety: elastyczność, czytelność i kontrolę nad nowymi nazwami kolumn.
+Elastyczność tę ilustruje poniższe polecenie, które oblicza nie tylko populację, ale także powierzchnię i liczbę krajów na każdym kontynencie:
+
+```{r 03-attribute-operations-29}
+world_agg4  = world |> 
+  group_by(continent) |> 
+  summarize(Pop = sum(pop, na.rm = TRUE), Area = sum(area_km2), N = n())
+```
+
+W poprzednim fragmencie kodu`Pop`i`N`są nazwami kolumn w wyniku, a`sum()``Area`i`n()`były funkcjami agregującymi.
+Te funkcje agregujące zwracają`sf`obiekty z wierszami reprezentującymi kontynenty i geometriami zawierającymi wiele wielokątów reprezentujących każdy ląd i powiązane wyspy (działa to dzięki operacji geometrycznej „union”, jak wyjaśniono w sekcji @ref(geometry-unions)).
+
+\\index{pipe operator}
+\\index{attribute!subsetting}
+\\index{attribute!aggregation}
+Połączmy to, czego nauczyliśmy się do tej pory ofunkcjach**dplyr**, łącząc wiele poleceń w celu podsumowania danych atrybutów dotyczących krajów na całym świecie według kontynentów.
+Poniższe polecenie oblicza gęstość zaludnienia (za pomocą`mutate()`), porządkuje kontynenty według liczby krajów, które zawierają (za`arrange()`pomocą), i zachowuje tylko trzy najbardziej zaludnione kontynenty (za pomocą`slice_max()`), a wynik jest przedstawiony w tabeli @ref(tab:continents)):
+
+### Łączenie
+
+```{r 03-attribute-operations-30}
+world_agg5 = world |> 
+  st_drop_geometry() |>                      # drop the geometry for speed
+  select(pop, continent, area_km2) |> # subset the columns of interest  
+  group_by(Continent = continent) |>  # group by continent and summarize:
+  summarize(Pop = sum(pop, na.rm = TRUE), Area = sum(area_km2), N = n()) |>
+  mutate(Density = round(Pop / Area)) |>     # calculate population density
+  slice_max(Pop, n = 3) |>                   # keep only the top 3
+  arrange(desc(N))                           # arrange in order of n. countries
+```
+
+```{r continents, echo=FALSE}
+options(scipen = 999)
+knitr::kable(
+  world_agg5,
+  caption = "The top three most populous continents ordered by number of countries.",
+  caption.short = "Top three most populous continents.",
+  booktabs = TRUE
+)
+```
+
+```{block2 03-attribute-operations-31, type="rmdnote"}
+More details are provided in the help pages (which can be accessed via `?summarize` and `vignette(package = "dplyr")` and Chapter 5 of [R for Data Science](https://r4ds.had.co.nz/transform.html#grouped-summaries-with-summarize). 
+```
+
+### atrybutów wektorowych
+
+Łączenie danych z różnych źródeł jest częstym zadaniem podczas przygotowywania danych.
+Łączenie polega na połączeniu tabel na podstawie wspólnej zmiennej „kluczowej”.
+**dplyr**posiada wiele funkcji łączenia, w tym`left_join()`i`inner_join()`—pełna listaznajduje`vignette("two-table")`sięw  .
+Nazwy tych funkcji są zgodne z konwencjami stosowanymi w języku baz danych[SQL](https://r4ds.had.co.nz/relational-data.html) [@grolemund_r_2016, rozdział 13] ;niniejszy rozdział skupia się na wykorzystaniu tych funkcji do łączenia zbiorów danych nieprzestrzennych z`sf`obiektami .
+Funkcje łączenia**dplyr**działają tak samo w przypadku ram danych i`sf`obiektów , a jedyną istotną różnicą jestkolumna`geometry`listy .
+Wynikiem połączenia danych może byćobiekt`sf``data.frame`lub.
+Najpopularniejszy typ łączenia atrybutów danych przestrzennych przyjmujeobiekt`sf`  jako pierwszy argument i dodaje do niego kolumny z  `data.frame`określonego jako drugi argument.
+\\index{join}
+\\index{attribute!join}
+
+Aby zademonstrować łączenie, połączymy dane dotyczące produkcji kawy z zestawem`world`danych .
+Dane dotyczące kawy znajdują się w ramce danych o nazwie`coffee_data`zpakietu**spData**(szczegółowe informacjemożna`?coffee_data`znaleźćw  ).Zawiera
+ona trzy kolumny:
+`name_long`nazwy głównych krajów produkujących kawę oraz`coffee_production_2016`i`coffee_production_2017`zawierające szacunkowe wartości produkcji kawy w workach o wadze 60 kg w każdym roku.
+„Połączenie lewe”, które zachowuje pierwszy zbiór danych, łączy`world`z`coffee_data`.
+
+```{r 03-attribute-operations-32, warning=FALSE}
+world_coffee = left_join(world, coffee_data)
+class(world_coffee)
+```
+
+Ponieważ zestawy danych wejściowych mają wspólną „zmienną kluczową” (`name_long`), połączenie zadziałało bez użyciaargumentu`by`  (szczegóły w`?left_join`).
+Wynikiem jestobiekt`sf`  identyczny z oryginalnym`world`obiektem , ale z dwoma nowymi zmiennymi (o indeksach kolumn 11 i 12) dotyczącymi produkcji kawy.
+Można to przedstawić na mapie, jak pokazano na rysunku @ref(fig:coffeemap), wygenerowanym za pomocą`plot()`funkcji  poniżej.
+
+```{r coffeemap, fig.cap="World coffee production (thousand 60-kg bags) by country, 2017. Source: International Coffee Organization.", fig.scap="World coffee production by country."}
+names(world_coffee)
+plot(world_coffee["coffee_production_2017"])
+```
+
+Aby połączenie zadziałało, w obu zestawach danych musi być podana „zmienna kluczowa”.
+Domyślnie**dplyr**używa wszystkich zmiennych o pasujących nazwach.
+W tym przypadku zarówno`coffee_data`obiekt`world`jak izawierały zmienną o nazwie`name_long`, co wyjaśnia komunikat`Joining with 'by = join_by(name_long)'`.
+W większości przypadków, gdy nazwy zmiennych nie są takie same, masz dwie opcje:
+
+1. Zmień nazwę zmiennej kluczowej w jednym z obiektów, aby były one zgodne.
+2. Użyjargumentu`by`
+
+,
+
+1. aby określić zmienne łączące.
+
+To drugie podejście zostało pokazane poniżej na przykładzie zmienionej nazwy`coffee_data`.
+
+```{r 03-attribute-operations-33, warning=FALSE}
+coffee_renamed = rename(coffee_data, nm = name_long)
+world_coffee2 = left_join(world, coffee_renamed, by = join_by(name_long == nm))
+```
+
+```{r 03-attribute-operations-34, eval=FALSE, echo=FALSE}
+identical(world_coffee, world_coffee2)
+nrow(world)
+nrow(world_coffee)
+```
+
+Należy zauważyć, że nazwa w oryginalnym obiekcie została zachowana, co oznacza, że`world_coffee`i nowy obiekt`world_coffee2`są identyczne.
+Kolejną cechą wyniku jest to, że ma on taką samą liczbę wierszy jak oryginalny zbiór danych.
+Chociaż w  znajduje się`coffee_data`tylko 47 wierszy danych, wszystkie 177 rekordów krajów pozostało nienaruszone w`world_coffee`i`world_coffee2`:
+wiersze w oryginalnym zbiorze danych, które nie mają dopasowania, otrzymują`NA`wartości  dla nowych zmiennych dotyczących produkcji kawy.
+Co się stanie,jeśli chcemy zachować tylko kraje,które mają dopasowanie w zmiennej kluczowej?
+\\index{attribute!join}
+W takim przypadku można użyć wewnętrznego połączenia.
+
+```{r 03-attribute-operations-35, warning=FALSE}
+world_coffee_inner = inner_join(world, coffee_data)
+nrow(world_coffee_inner)
+```
+
+Należy zauważyć
+
+,
+
+że wynik`inner_join()`ma tylko 45 wierszy w porównaniu z 47 w`coffee_data`.
+Co stało się z pozostałymi wierszami?
+Możemy zidentyfikować wiersze, które nie pasowały, używającfunkcji`setdiff()`  w następujący sposób:
+
+```{r 03-attribute-operations-36}
+setdiff(coffee_data$name_long, world$name_long)
+```
+
+Wynik pokazuje, że`Others`odpowiada za jeden wiersz nieobecny w  zestawie`world`danych, a`Democratic Republic of the Congo`nazwaodpowiada za drugi:
+została skrócona, co spowodowało, że połączenie jej pominęło.
+Poniższe polecenie wykorzystujefunkcjędopasowywania ciągów znaków (*regex*) zpakietu**stringr,**aby potwierdzić, co`Congo, Dem. Rep. of`powinno być.
+
+```{r 03-attribute-operations-37}
+drc = stringr::str_subset(world$name_long, "Dem*.+Congo")
+drc
+```
+
+```{r, echo=FALSE, eval=FALSE}
+world$name_long[grepl(pattern = "Dem*.+Congo", world$name_long)] # base R
+```
+
+```{r 03-attribute-operations-38, eval=FALSE, echo=FALSE}
+# aim: test names in coffee_data and world objects
+str_subset(coffee_data$name_long, "Ivo|Congo,")
+.Last.value %in% str_subset(world$name_long, "Ivo|Dem*.+Congo")
+```
+
+Aby rozwiązać ten problem, utworzymy nową wersję`coffee_data`i zaktualizujemy nazwę.
+`inner_join()`Po zaktualizowaniu ramki danych otrzymujemy wynik zawierający wszystkie 46 krajów produkujących kawę.
+
+```{r 03-attribute-operations-39, warning=FALSE}
+coffee_data$name_long[grepl("Congo,", coffee_data$name_long)] = drc
+world_coffee_match = inner_join(world, coffee_data)
+nrow(world_coffee_match)
+```
+
+Możliwe jest również połączenie w drugą stronę: zaczynając od zbioru danych nieprzestrzennych i dodając zmienne z prostego obiektu cech.
+Pokazano to poniżej, gdzie zaczynamy odobiektu`coffee_data`  i dodajemy zmienne z oryginalnego`world`zbiorudanych .
+W przeciwieństwie do poprzednich połączeń, wynikiem*nie*jestkolejny obiekt prostych cech, ale ramka danych w postaci**tidyverse**tibble:
+wynik połączenia zazwyczaj odpowiada jego pierwszemu argumentowi.
+
+```{r 03-attribute-operations-40, warning=FALSE}
+coffee_world = left_join(coffee_data, world)
+class(coffee_world)
+```
+
+```{block2 03-attribute-operations-41, type="rmdnote"}
+In most cases, the geometry column is only useful in an `sf` object.
+The geometry column can only be used for creating maps and spatial operations if R 'knows' it is a spatial object, defined by a spatial package such as **sf**.
+Fortunately, non-spatial data frames with a geometry list column (like `coffee_world`) can be coerced into an `sf` object as follows: `st_as_sf(coffee_world)`. 
+```
+
+Ta sekcja obejmuje większość przypadków użycia połączeń.
+Aby uzyskać więcej informacji, zalecamy przeczytanie rozdziału[Dane relacyjne](https://r4ds.had.co.nz/relational-data.html?q=join#relational-data)w @grolemund\_r\_2016,[winiety](https://geocompx.github.io/geocompkg/articles/join.html)[dotyczącej połączeń](https://geocompx.github.io/geocompkg/articles/join.html)wpakiecie**geocompkg**dołączonym do tej książki oraz[dokumentacji](https://asardaes.github.io/table.express/articles/joins.html)opisującej połączenia z**data.table**i innymi pakietami.
+Ponadto połączenia przestrzenne zostały omówione w następnym rozdziale (sekcja @ref(spatial-joining)).
+
+### Tworzenie atrybutów i usuwanie informacji{#vec-attr-creation}przestrzennych
+
+\\index{attribute!create}
+Często chcemy utworzyć nową kolumnę na podstawie już istniejących kolumn.
+Na przykład chcemy obliczyć gęstość zaludnienia dla każdego kraju.
+W tym celu musimy podzielić kolumnę populacji, tutaj`pop`, przez kolumnę obszaru, tutaj`area_km2`z jednostką powierzchni w kilometrach kwadratowych.
+Korzystając z podstawowego R, możemy wpisać:
+
+```{r 03-attribute-operations-42}
+world_new = world # do not overwrite our original data
+world_new$pop_dens = world_new$pop / world_new$area_km2
+```
+
+\\index{attribute!create}
+Alternatywnie możemy użyć jednej zfunkcji**dplyr**:`mutate()`lub`transmute()`.
+`mutate()`dodaje nowe kolumny na przedostatniej pozycji w`sf`obiekcie  (ostatnia jest zarezerwowana dla geometrii):
+
+```{r 03-attribute-operations-43, eval=FALSE}
+world_new2 = world |> 
+  mutate(pop_dens = pop / area_km2)
+```
+
+Różnica między`mutate()`a`transmute()`polega na tym, że ta druga usuwa wszystkie inne istniejące kolumny (z wyjątkiem kolumny geometrycznej).
+
+\\index{attribute!create}
+`unite()`zpakietu**tidyr**(który zapewnia wiele przydatnych funkcji do przekształcania zbiorów danych, w tym`pivot_longer()`) łączy istniejące kolumny.
+Na przykład, chcemy połączyćkolumny`continent``region_un`iw nową kolumnę o nazwie`con_reg`.
+Dodatkowo możemy zdefiniować separator (w tym przypadku dwukropek`:`),który określa, w jaki sposób wartości kolumn wejściowych powinny być łączone oraz czy oryginalne kolumny powinny zostać usunięte (w tym przypadku`TRUE`).
+
+```{r 03-attribute-operations-45, eval=FALSE}
+world_unite = world |>
+  tidyr::unite("con_reg", continent:region_un, sep = ":", remove = TRUE)
+```
+
+Wynikowy`sf`obiekt  ma nową kolumnę o nazwie`con_reg`, reprezentującą kontynent i region każdego kraju, np.`South America:Americas`dla Argentyny i innych krajów Ameryki Południowej.Funkcja{attribute!create}
+
+`separate()`pakietu**tidyr**działa odwrotnie do`unite()`: dzieli jedną kolumnę na wiele kolumn,używając wyrażenia regularnego lub pozycji znaków.
+
+```{r 03-attribute-operations-46, eval=FALSE}
+world_separate = world_unite |>
+  tidyr::separate(con_reg, c("continent", "region_un"), sep = ":")
+```
+
+```{r 03-attribute-operations-47, echo=FALSE, eval=FALSE}
+identical(world, world_separate)
+```
+
+\\index{attribute!create}
+Funkcja`rename()`**dplyr**i podstawowa funkcja R`setNames()`są przydatne do zmiany nazw kolumn.
+Pierwsza z nich zastępuje starą nazwę nową.Na przykład
+poniższe polecenie zmienia nazwę długiej`name_long`kolumny  na prostą`name`:
+
+```{r 03-attribute-operations-48, eval=FALSE}
+world |> 
+  rename(name = name_long)
+```
+
+\\index{attribute!create}
+`setNames()`zmienia wszystkie nazwy kolumn jednocześnie i wymaga wektora znaków z nazwą pasującą do każdej kolumny.
+Zostało to zilustrowane poniżej, gdzie wyświetlany jest ten sam`world`obiekt , ale z bardzo krótkimi nazwami:
+
+```{r 03-attribute-operations-49, eval=FALSE, echo=FALSE}
+abbreviate(names(world), minlength = 1) |> dput()
+```
+
+```{r 03-attribute-operations-50, eval=FALSE}
+new_names = c("i", "n", "c", "r", "s", "t", "a", "p", "l", "gP", "geom")
+world_new_names = world |>
+  setNames(new_names)
+```
+
+\\index{attribute!create}
+Każda z tych operacji na danych atrybutów zachowuje geometrię prostych elementów.
+Czasami sensowne jest usunięcie geometrii, na przykład w celu przyspieszenia agregacji.
+Należy to zrobić za`st_drop_geometry()`pomocą,**a nie**ręcznie za pomocą poleceń takich jak`select(world, -geom)`, jak pokazano poniżej.^\[działa
+`st_geometry(world_st) = NULL`również w celu usunięcia geometrii z`world`, ale nadpisuje oryginalny obiekt.
+\]
+
+```{r 03-attribute-operations-51}
+world_data = world |> st_drop_geometry()
+class(world_data)
+```
+
+## Manipulowanie obiektami rastrowymi
+
+W przeciwieństwie do modelu danych wektorowych leżącego u podstaw prostych obiektów (który przedstawia punkty, linie i wielokąty jako odrębne elementy w przestrzeni), dane rastrowe przedstawiają ciągłe powierzchnie.
+W tej sekcji pokazano,jak działają obiekty rastrowe,tworząc je*od podstaw*w oparciu o sekcję @ref(introduction-to-terra).
+Ze względu na swoją unikalną strukturę, operacje podziału na podzbiory i inne operacje na zbiorach danych rastrowych działają w inny sposób, jak pokazano w sekcji @ref(raster-subsetting).
+
+\\index{raster!manipulation}
+Poniższy kod odtwarza zbiór danych rastrowych użyty w sekcji @ref(raster-classes), którego wynik ilustruje rysunek @ref(fig:cont-raster).
+Pokazuje to, jakdziała funkcja  w`rast()`celu utworzenia przykładowego rastra o nazwie`elev`(reprezentującego wysokości).
+
+```{r 03-attribute-operations-52, message=FALSE, eval=FALSE}
+elev = rast(nrows = 6, ncols = 6,
+            xmin = -1.5, xmax = 1.5, ymin = -1.5, ymax = 1.5,
+            vals = 1:36)
+```
+
+Wynikiem jest obiekt rastrowe z 6 wierszami i 6 kolumnami (określonymi przezargumenty`nrow``ncol`i) oraz minimalnym i maksymalnym zasięgiem przestrzennym w kierunku x i y (`xmin`,`xmax`,`ymin`,`ymax`).
+Argument`vals`  ustawia wartości zawarte w każdej komórce: w tym przypadku dane liczbowe w zakresie od 1 do 36.
+
+\\index{raster!manipulation}
+\\index{raster!categorical}
+Obiekty rastrowe mogą również zawierać wartości kategorycznezmiennychklasy`logical``factor`lubw języku R.
+Poniższy kod tworzy zestawy danych rastrowych pokazane na rysunku @ref(fig:cont-raster):
+
+```{r 03-attribute-operations-53, eval=FALSE}
+grain_order = c("clay", "silt", "sand")
+grain_char = sample(grain_order, 36, replace = TRUE)
+grain_fact = factor(grain_char, levels = grain_order)
+grain = rast(nrows = 6, ncols = 6, 
+             xmin = -1.5, xmax = 1.5, ymin = -1.5, ymax = 1.5,
+             vals = grain_fact)
+```
+
+```{r 03-attribute-operations-54, include=FALSE}
+elev = rast(system.file("raster/elev.tif", package = "spData"))
+grain = rast(system.file("raster/grain.tif", package = "spData"))
+```
+
+\\index{raster!categorical}
+\\index{raster attribute table}
+Obiekt rastrowy przechowuje odpowiednią tabelę odnośników lub „tabelę atrybutów rastra” (RAT) jako listę ram danych, które można wyświetlić za pomocą`cats(grain)`(więcej informacjimożna`?cats()`znaleźćw  ).
+Każdy element tej listy jest warstwą rastra.
+Możliwe jest również użycie funkcji`levels()`do pobierania i dodawania nowych lub zastępowania istniejących poziomów czynników.
+
+```{r 03-attribute-operations-56}
+grain2 = grain # do not overwrite the original data
+levels(grain2) = data.frame(value = c(0, 1, 2), wetness = c("wet", "moist", "dry"))
+levels(grain2)
+```
+
+```{r cont-raster, echo=FALSE, message=FALSE, fig.asp=0.5, fig.cap="Raster datasets with numeric (left) and categorical values (right).", fig.scap="Raster datasets with numeric and categorical values.", warning=FALSE}
+# knitr::include_graphics("https://user-images.githubusercontent.com/1825120/146617366-7308535b-30f6-4c87-83f7-21702c7d993b.png")
+source("code/03-cont-raster-plot.R", print.eval = TRUE)
+```
+
+```{block2 coltab, type="rmdnote"}
+Categorical raster objects can also store information about the colors associated with each value using a color table.
+The color table is a data frame with three (red, green, blue) or four (alpha) columns, where each row relates to one value.
+Color tables in **terra** can be viewed or set with the `coltab()` function (see `?coltab`).
+Importantly, saving a raster object with a color table to a file (e.g., GeoTIFF) will also save the color information.
+```
+
+### Podzbiór rastrowy
+
+Podzbiór rastrowy jest wykonywany za pomocą podstawowego operatora R`[`, który akceptuje różne dane wejściowe:
+\\index
+
+- Indeksowanie
+
+{raster!subsetting}
+
+- wierszy i kolumn
+- Identyfikatory komórek
+- Współrzędne
+- Inny obiekt przestrzenny
+
+Tutaj pokazujemy tylko dwie pierwsze opcje, ponieważ można je uznać za operacje nieprzestrzenne.
+Jeśli potrzebujemy obiektu przestrzennego do utworzenia podzbioru innego obiektu lub wynik jest obiektem przestrzennym, nazywamy to podzbiorem przestrzennym.
+Dlatego też dwie ostatnie opcje zostaną przedstawione w następnym rozdziale (patrz sekcja @ref(spatial-raster-subsetting)).
+
+\\index{raster!subsetting}
+Dwie pierwsze opcje podziału na podzbiory zostały przedstawione w poniższych poleceniach —
+oba zwracają wartość lewego górnego piksela w obiekcie`elev`rastrowym(wyniki nie są pokazane).
+
+```{r 03-attribute-operations-58, eval=FALSE}
+# row 1, column 1
+elev[1, 1]
+# cell ID 1
+elev[1]
+```
+
+Podzbiór wielowarstwowych obiektów rastrowych zwróci wartość (wartości) komórki dla każdej warstwy.
+Na przykładzwraca ramkę danych z jednym`two_layers = c(grain, elev); two_layers[1]`wierszem i dwiema kolumnami — po jednej dla każdej warstwy.
+Aby wyodrębnić wszystkie wartości, można również użyć`values()`.
+
+Wartości komórek można modyfikować, nadpisując istniejące wartości w połączeniu z operacją tworzenia podzbioru.Na przykład
+poniższy fragment kodu ustawia lewą górną komórkę  na`elev`0 (wyniki nie są pokazane):
+
+```{r 03-attribute-operations-60, results="hide"}
+elev[1, 1] = 0
+elev[]
+```
+
+Pozostawienie pustych nawiasów kwadratowych jest skróconą wersją  służącą`values()`do pobrania wszystkich wartości rastra.
+W ten sposób można również modyfikować wiele komórek:
+
+```{r 03-attribute-operations-61}
+elev[1, c(1, 2)] = 0
+```
+
+Zastąpienie wartości wielowarstwowych rastrów można wykonać za pomocą macierzy o liczbie kolumn równej liczbie warstw i liczbie wierszy równej liczbie komórek, które można zastąpić (wyniki nie są pokazane):
+
+```{r 03-attribute-operations-61b, eval=FALSE}
+two_layers = c(grain, elev) 
+two_layers[1] = cbind(c(1), c(4))
+two_layers[]
+```
+
+### Podsumowanie obiektów rastrowych
+
+**terra**zawiera funkcje służące do wyodrębniania statystyk opisowych\\index{statistics}dla całych rastrów.
+Wydrukowanie obiektu rastrowego na konsoli poprzez wpisanie jego nazwy zwraca minimalne i maksymalne wartości rastra.
+\\index{raster!summarizing}
+`summary()`zapewnia wspólne statystyki opisowe\\index{statistics}— minimum, maksimum, kwartyle i liczbęs`NA`dla rastrów ciągłych oraz liczbę komórek każdej klasy dla rastrów kategorycznych.
+\\index{raster!summarizing}
+Dalsze operacje podsumowujące, takie jak odchylenie standardowe (patrz poniżej) lub niestandardowe statystyki podsumowujące
+
+,
+
+można obliczyć za pomocą`global()`.
+
+```{r 03-attribute-operations-62, eval=FALSE}
+global(elev, sd)
+```
+
+```{block2 03-attribute-operations-63, type="rmdnote"}
+If you provide the `summary()` and `global()` functions with a multi-layered raster object, they will summarize each layer separately, as can be illustrated by running: `summary(c(elev, grain))`.
+```
+
+\\index{raster!summarizing}
+Dodatkowofunkcja`freq()`  umożliwia uzyskanie tabeli częstotliwości wartości kategorycznych.
+
+```{r}
+freq(grain)
+```
+
+Statystyki wartości rastrowych można wizualizować na różne sposoby.
+Określone funkcje, takie jak`boxplot()`,`density()`,`hist()`i`pairs()`działają również z obiektami rastrowymi, co pokazuje histogram utworzony za pomocą poniższego polecenia (nie pokazano).
+
+```{r 03-attribute-operations-64, eval=FALSE}
+hist(elev)
+```
+
+\\index{raster!values}
+W przypadku, gdy żądana funkcja wizualizacji nie działa z obiektami rastrowymi, można wyodrębnić dane rastrowe do wykreślenia za pomocą`values()`(sekcja @ref(raster-subsetting)).
+
+Statystyki opisowe rastra należą do tak zwanych globalnych operacji rastrowe.
+Te i inne typowe operacje przetwarzania rastra są częścią schematu algebry map, które zostaną omówione w następnym rozdziale (sekcja @ref(map-algebra)).
+
+```{block 03-attribute-operations-65, type="rmdnote"}
+Niektóre nazwy funkcji kolidują między pakietami (np. funkcje o nazwie `extract()` istnieją zarówno w pakietach **terra**, jak i **tidyr**).
+Może to prowadzić do nieoczekiwanych wyników podczas ładowania pakietów w innej kolejności.
+Oprócz wywoływania funkcji w sposób rozbudowany, z pełną przestrzenią nazw (np. `tidyr::extract()`), aby uniknąć dołączania pakietów za pomocą `library()`, innym sposobem zapobiegania kolizjom nazw funkcji jest wyładowanie pakietu powodującego kolizję za pomocą `detach()`.
+Na przykład poniższe polecenie powoduje wyładowanie pakietu **terra** (można to również zrobić w zakładce *package*, która domyślnie znajduje się w prawym dolnym panelu w RStudio): `detach("package:terra", unload = TRUE, force = TRUE)`.
+Argument `force` gwarantuje, że pakiet zostanie odłączony, nawet jeśli inne pakiety są od niego zależne.
+Może to jednak ograniczyć użyteczność pakietów zależnych od odłączonego pakietu, dlatego nie jest to zalecane.
+```
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_03-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+

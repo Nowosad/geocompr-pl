@@ -1,0 +1,1209 @@
+# Operacje na danych{#spatial-operations}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+# przestrzennych
+
+## Wymagania wstępne{-}
+
+- W niniejszym rozdziale wykorzystano te same pakiety
+
+,
+
+- co w rozdziale @ref(attr):
+
+```{r 04-spatial-operations-1, message=FALSE, results="hide"}
+library(sf)
+library(terra)
+library(dplyr)
+library(spData)
+```
+
+## Wprowadzenie
+
+Operacje przestrzenne, w tym połączenia przestrzenne między zbiorami danych wektorowych oraz operacje lokalne i ogniskowe na zbiorach danych rastrowych, stanowią istotną część geocomputation\\index{geocomputation}.
+W niniejszym rozdziale pokazano, w jaki sposób obiekty przestrzenne można modyfikować na wiele sposobów w oparciu o ich lokalizację i kształt.
+Wiele operacji przestrzennych ma swój odpowiednik nieprzestrzenny (atrybut), więc pojęcia takie jak podzbiory i łączenie zbiorów danych przedstawione w poprzednim rozdziale mają tutaj zastosowanie.
+Dotyczy to zwłaszczaoperacji*wektorowych*: sekcja @ref(vector-attribute-manipulation) dotycząca manipulacji atrybutami wektorowymi stanowi podstawę do zrozumienia jej przestrzennego odpowiednika, a mianowicie podzbiorów przestrzennych (omówionych w sekcji @ref(spatial-subsetting)).
+Łączenie przestrzenne (sekcje @ref(spatial-joining), @ref(non-overlapping-joins) i @ref(incongruent)) oraz agregacja (sekcja @ref(spatial-aggr)) również mają swoje odpowiedniki nieprzestrzenne, omówione w poprzednim rozdziale.
+
+Operacje przestrzenne różnią się jednak od operacji nieprzestrzennych pod wieloma względami:
+na przykład połączenia przestrzenne można wykonywać na wiele sposobów — w tym poprzez dopasowywanie elementów, które przecinają się z docelowym zbiorem danych lub znajdują się w określonej odległości od niego — podczas gdy połączenia atrybutów omówione w sekcji @ref(vector-attribute-joining) w poprzednim rozdziale można wykonywać tylko w jeden sposób (z wyjątkiem sytuacji, gdy stosuje się połączenia rozmyte, zgodnie z opisem w dokumentacjipakietu[**fuzzyjoin**](https://cran.r-project.org/package=fuzzyjoin)).
+Różne*typy*relacji przestrzennych między obiektami, w tym przecięcia i rozdzielenia, opisano w sekcjach @ref(topological-relations) i @ref(DE-9IM-strings).
+\\index{spatial operations}
+Kolejnym wyjątkowym aspektem obiektów przestrzennych jest odległość: wszystkie obiekty przestrzenne są powiązane poprzez przestrzeń, a obliczenia odległości mogą być wykorzystane do zbadania siły tej relacji, jak opisano w kontekście danych wektorowych w sekcji @ref(distance-relations).
+
+Operacje przestrzenne na obiektach rastrowych obejmują tworzenie podzbiorów — omówione w sekcji @ref(spatial-raster-subsetting).*Algebra*
+*map*obejmuje szereg operacji, które modyfikują wartości komórek rastrowych, z odniesieniem do wartości komórek otaczających lub bez takiego odniesienia.
+Pojęcie algebry map, niezbędne w wielu zastosowaniach, zostało wprowadzone w sekcji @ref(map-algebra); operacje algebry map lokalnej, ogniskowej i strefowej omówiono odpowiednio w sekcjach @ref(local-operations), @ref(focal-operations) i @ref(zonal-operations).
+Globalne operacje algebry map, które generują statystyki podsumowujące reprezentujące cały zbiór danych rastrowych, oraz obliczenia odległości na rastrowe omówiono w sekcji @ref(global-operations-and-distances).
+Następnie w sekcji @ref(map-algebra-counterparts-in-vector-processing) omówiono relacje między algebrą map a operacjami wektorowymi.
+W sekcji @ref(merging-rasters)1 omówiono i zademonstrowano proces łączenia dwóch zbiorów danych rastrowych w odniesieniu do powtarzalnego przykładu.
+
+```{block2 04-spatial-operations-2, type="rmdnote"}
+It is important to note that spatial operations that use two spatial objects rely on both objects having the same coordinate reference system, a topic that was introduced in Section \@ref(crs-intro) and which will be covered in more depth in Chapter \@ref(reproj-geo-data).
+```
+
+## Operacje przestrzenne na danych{#spatial-vec}wektorowych
+
+W tej sekcji przedstawiono przegląd operacji przestrzennych na danych geograficznych wektorowych reprezentowanych jako proste obiekty wpakiecie**sf**.
+Sekcja @ref(spatial-ras) przedstawia operacje przestrzenne na zbiorach danych rastrowych przy użyciu klas i funkcji zpakietu**terra**.
+
+### Podzbiory przestrzenne
+
+Podzbiory przestrzenne to proces polegający na pobraniu obiektu przestrzennego i zwróceniu nowego obiektu zawierającego tylko obiekty, które*są powiązane*przestrzennie z innym obiektem.
+Analogicznie do*podzbiorów atrybutów*(omówionych w sekcji @ref(vector-attribute-subsetting)), podzbiory  ram`sf`danych można tworzyć za pomocąoperatoranawiasów kwadratowych (`[`) przy użyciu składni`x[y, , op = st_intersects]`, gdzie`x`jestobiektem`sf`, z którego zostanie zwrócony podzbiór wierszy,`y`jest „obiektem podzbioru”,a`, op = st_intersects`jest opcjonalnym argumentem określającym relację topologiczną (znaną również jako predykat binarny) używaną do tworzenia podzbioru.
+Domyślną relacją topologiczną używaną w przypadkubraku`op`argumentu  jest`st_intersects()`: polecenie`x[y, ]`jest identyczne z`x[y, , op = st_intersects]`pokazanym powyżej, ale nie`x[y, , op = st_disjoint]`(znaczenie tych i innych relacji topologicznych opisano w następnej sekcji).Można również
+użyć{tidyverse (package)}funkcji`filter()`  z**tidyverse**\\index, ale podejście to jest bardziej rozbudowane, co widać na poniższych przykładach.
+index{vector!subsetting}
+\\index{spatial!subsetting}
+
+Aby zademonstrować podzbiór przestrzenny, użyjemy zbiorów danych`nz``nz_height`izpakietu**spData**, które zawierają dane geograficzne dotyczące odpowiednio 16 głównych regionów i 101 najwyższych punktów w Nowej Zelandii (rysunek @ref(fig:nz-subset)), w rzutowanym układzie odniesienia współrzędnych.
+Poniższy fragment kodu tworzy obiekt reprezentujący Canterbury, a następnie wykorzystuje podzbiór przestrzenny, aby zwrócić wszystkie wysokie punkty w regionie.
+
+```{r 04-spatial-operations-3}
+canterbury = nz |> filter(Name == "Canterbury")
+canterbury_height = nz_height[canterbury, ]
+```
+
+\`\`\`{r nz-subset, echo=FALSE, warning=FALSE, fig.cap="Spatial subsetting, with red triangles representing 101 high points in New Zealand, clustered near the central Canterbuy region (left). The points in Canterbury were created with the 
+ subsetting operator (highlighted in gray, right).", fig.scap="Spatial subsetting.", message=FALSE}`[`
+library(tmap)
+p\_hpnz1 = tm\_shape(nz) +
+tm\_polygons(fill = "white") +
+tm\_shape(nz\_height) +
+tm\_symbols(shape = 2, col = "red", size = 0.5, col\_alpha = 0.75) +
+tm\_title("High points in New Zealand") +
+tm\_layout(bg.color = "lightblue")
+p\_hpnz2 = tm\_shape(nz) +
+tm\_polygons(fill = "white") +
+tm\_shape(canterbury) +
+tm\_fill(col = "gray") +
+tm\_shape(canterbury\_height) +
+tm\_symbols(shape = 2, col = "red", size = 0.5, col\_alpha = 0.75) +
+tm\_title("Najwyższe punkty w Canterbury") +
+tm\_layout(bg.color = "lightblue")
+tmap\_arrange(p\_hpnz1, p\_hpnz2, ncol = 2)
+
+````
+
+Like attribute subsetting, the command `x[y, ]` (equivalent to `nz_height[canterbury, ]`) subsets features of a *target* `x` using the contents of a *source* object `y`.
+Instead of `y` being a vector of class `logical` or `integer`, however, for spatial subsetting both `x` and `y` must be geographic objects.
+Specifically, objects used for spatial subsetting in this way must have the class `sf` or `sfc`: both `nz` and `nz_height` are geographic vector data frames and have the class `sf`, and the result of the operation returns another `sf` object representing the features in the target `nz_height` object that intersect with (in this case high points that are located within) the `canterbury` region. 
+
+Various *topological relations*\index{topological relations} can be used for spatial subsetting which determine the type of spatial relationship that features in the target object must have with the subsetting object to be selected.
+These include *touches*, *crosses* or *within*, as we will see shortly in Section \@ref(topological-relations). 
+The default setting `st_intersects` is a 'catch all' topological relation that will return features in the target that *touch*, *cross* or are *within* the source 'subsetting' object.
+Alternative spatial operators can be specified with the `op =` argument, as demonstrated in the following command which returns the opposite of `st_intersects()`, points that do not intersect with Canterbury (see Section \@ref(topological-relations)).
+
+```{r 04-spatial-operations-4, eval=FALSE}
+nz_height[canterbury, , op = st_disjoint]
+````
+
+```{block2 04-spatial-operations-5, type="rmdnote"}
+Note the empty argument --- denoted with `, ,` --- in the preceding code chunk is included to highlight `op`, the third argument in `[` for `sf` objects.
+One can use this to change the subsetting operation in many ways.
+`nz_height[canterbury, 2, op = st_disjoint]`, for example, returns the same rows but only includes the second attribute column (see `` sf::`[.sf` `` and the `?sf` for details).
+```
+
+W przypadku wielu zastosowań to wszystko, co musisz wiedzieć o podziale przestrzennym danych wektorowych: po prostu działa.
+Jeśli nie możesz się doczekać, aby dowiedzieć się więcej o relacjach topologicznych, poza`st_intersects()`i`st_disjoint()`, przejdź do następnej sekcji (@ref(topological-relations)).
+Jeśli interesują Cię szczegóły, w tym inne sposoby tworzenia podzbiorów, czytaj dalej.
+
+Innym sposobem tworzenia podzbiorów przestrzennych jest wykorzystanie obiektów zwracanych przez operatory topologiczne.
+Obiekty te mogą być przydatne same w sobie, na przykład podczas badania sieci graficznej relacji między sąsiadującymi regionami, ale mogą być również wykorzystywane do tworzenia podzbiorów, jak pokazano w poniższym fragmencie kodu.
+
+```{r 04-spatial-operations-6, out.lines=9}
+sel_sgbp = st_intersects(x = nz_height, y = canterbury)
+class(sel_sgbp)
+sel_sgbp
+sel_logical = lengths(sel_sgbp) > 0
+canterbury_height2 = nz_height[sel_logical, ]
+```
+
+Powyższy fragment kodu tworzy obiekt klasy`sgbp`(rzadki binarny predykat geometryczny, lista o długości`x`w operacji przestrzennej), a następnie konwertuje go na wektor logiczny`sel_logical`(zawierający tylkowartości`TRUE``FALSE`i, który może być również używany przezfunkcję filtrującą**dplyr**).
+\\index{binary predicate|see {topological relations}}
+Funkcja`lengths()`identyfikuje, które elementy w`nz_height`przecinają się z*dowolnymi*obiektami w`y`.
+W tym przypadku 1 jest największą możliwą wartością, ale w przypadku bardziej złożonych operacji można użyć metody do podziału na podzbiory tylko tych cech, które przecinają się na przykład z 2 lub więcej cechami z obiektu źródłowego.
+
+```{block2 04-spatial-operations-7, type="rmdnote"}
+Note: another way to return a logical output is by setting `sparse = FALSE` (meaning 'return a dense matrix not a sparse one') in operators such as `st_intersects()`. The command `st_intersects(x = nz_height, y = canterbury, sparse = FALSE)[, 1]`, for example, would return an output identical to `sel_logical`.
+Note: the solution involving `sgbp` objects is more generalizable though, as it works for many-to-many operations and has lower memory requirements.
+```
+
+Ten sam wynik można również osiągnąć za pomocąfunkcji**sf**`st_filter()`
+
+,
+
+która została[stworzona](https://github.com/r-spatial/sf/issues/1148)w celu zwiększenia kompatybilności między`sf`obiektami  akodem manipulacji danymi**dplyr**:
+
+```{r}
+canterbury_height3 = nz_height |>
+  st_filter(y = canterbury, .predicate = st_intersects)
+```
+
+```{r 04-spatial-operations-7b-old, eval=FALSE, echo=FALSE}
+# Additional tests of subsetting
+canterbury_height4 = nz_height |>
+  filter(st_intersects(x = _, y = canterbury, sparse = FALSE))
+canterbury_height5 = nz_height |>
+  filter(sel_logical)
+identical(canterbury_height3, canterbury_height4)
+identical(canterbury_height3, canterbury_height5)
+identical(canterbury_height2, canterbury_height4)
+identical(canterbury_height, canterbury_height4)
+waldo::compare(canterbury_height2, canterbury_height4)
+```
+
+W tym momencie istnieją trzy identyczne (z wyjątkiem nazw wierszy) wersje, jedna utworzona za pomocą`[`operatora , jedna`canterbury_height`utworzona za pomocą pośredniego obiektu selekcji, a druga za pomocąwygodnej funkcji**sf**`st_filter()`.
+
+<!-- RL: na razie skomentowane jako stare. Do zrobienia: jeśli kiedykolwiek zaktualizujemy tę winietę, usuń komentarz z następnej linii. -->
+
+W następnej sekcji omówiono różne rodzaje relacji przestrzennych, znane również jako predykaty binarne, które można wykorzystać do określenia, czy dwie cechy są powiązane przestrzennie, czy nie.
+
+### Relacje topologiczne
+
+Relacje topologiczneopisują{topological relations}relacje przestrzenne między obiektami.
+„Binarne relacje topologiczne”, aby nadać im pełną nazwę, są logicznymi stwierdzeniami (w tym sensie, że odpowiedź może być`TRUE`tylkolub`FALSE` ) dotyczącymi relacji przestrzennych między dwoma obiektami zdefiniowanymi przez uporządkowane zbiory punktów (zazwyczaj tworzące punkty, linie i wielokąty) w dwóch lub więcej wymiarach [@egenhofer_mathematical_1990] .
+ Może to brzmieć dość abstrakcyjnie i rzeczywiście, definicja i klasyfikacja relacji topologicznych opiera się na podstawach matematycznych opublikowanych po raz pierwszy w formie książkowej w 1966 r [@spanier_algebraic_1995] . , a dziedzina topologii algebraicznej rozwija się nadal po 2000 r. [@dieck_algebraic_2008] .
+
+Pomimo swojego matematycznego pochodzenia, relacje topologiczne można zrozumieć intuicyjnie, odwołując się do wizualizacji powszechnie stosowanych funkcji, które testują typowe rodzaje relacji przestrzennych.
+Rysunek @ref(fig:relations) przedstawia różne pary geometryczne i związane z nimi relacje.
+Trzecia i czwarta para na rysunku @ref(fig:relations) (od lewej do prawej, a następnie w dół) pokazują, że w przypadku niektórych relacji ważna jest kolejność.
+Podczas gdy relacje*równe*,*przecinające się*,*krzyżujące się*,*stykające się*i*nakładające się*są symetryczne, co oznacza, że jeśli`function(x, y)`jest prawdziwe,również`function(y, x)`będzie prawdziwe, relacje, w których kolejność geometrii jest ważna, takie jak*zawiera*i*w obrębie,*nie są symetryczne.
+Należy zauważyć, że każda para geometrii ma ciąg znaków „DE-9IM”, taki jak FF2F11212, opisany w następnej sekcji.
+W{topological relations}
+
+```{r relations, echo=FALSE, fig.cap="Topological relations between vector geometries, inspired by figures 1 and 2 in Egenhofer and Herring (1990). The relations for which the function(x, y) is true are printed for each geometry pair, with x represented in pink and y represented in blue. The nature of the spatial relationship for each pair is described by the Dimensionally Extended 9-Intersection Model string.", fig.show="hold", message=FALSE, fig.asp=0.66, warning=FALSE}
+# source("https://github.com/geocompx/geocompr/raw/main/code/de_9im.R")
+source("code/de_9im.R")
+library(sf)
+xy2sfc = function(x, y) st_sfc(st_polygon(list(cbind(x, y))))
+p1 = xy2sfc(x = c(0, 0, 1, 1,   0), y = c(0, 1, 1, 0.5, 0))
+p2 = xy2sfc(x = c(0, 1, 1, 0), y = c(0, 0, 0.5, 0))
+p3 = xy2sfc(x = c(0, 1, 1, 0), y = c(0, 0, 0.7, 0))
+p4 = xy2sfc(x = c(0.7, 0.7, 0.9, 0.7), y = c(0.8, 0.5, 0.5, 0.8))
+p5 = xy2sfc(x = c(0.6, 0.7, 1, 0.6), y = c(0.7, 0.5, 0.5, 0.7))
+p6 = xy2sfc(x = c(0.1, 1, 1, 0.1), y = c(0, 0, 0.3, 0))
+p7 = xy2sfc(x = c(0.05, 0.05, 0.6, 0.5, 0.05), y = c(0.4, 0.97, 0.97, 0.4, 0.4))
+
+# todo: add 3 more with line/point relations?
+tmap::tmap_arrange(de_9im(p1, p2), de_9im(p1, p3), de_9im(p1, p4),
+                   de_9im(p7, p1), de_9im(p1, p5), de_9im(p1, p6), nrow = 2)
+```
+
+funkcje testujące różne typy relacji topologicznych nazywane są „predykatami`sf`binarnymi”, jak opisano w sekcji*Manipulowanie prostymi geometriami obiektów*, którą można wyświetlić za pomocą polecenia[`vignette("sf3")`](https://r-spatial.github.io/sf/articles/sf3.html)oraz na stronie pomocy[`?geos_binary_pred`](https://r-spatial.github.io/sf/reference/geos_binary_ops.html).
+Aby zobaczyć, jak relacje topologiczne działają w praktyce, stwórzmy prosty, powtarzalny przykład, opierając się na relacjach przedstawionych na rysunku @ref(fig:relations) i konsolidując wiedzę na temat reprezentacji geometrii wektorowych z poprzedniego rozdziału (sekcja @ref(geometry)).
+Należy pamiętać, że aby utworzyć dane tabelaryczne reprezentujące współrzędne (x i y) wierzchołków wielokąta, używamy podstawowej funkcji R`cbind()`do utworzenia macierzy reprezentującej punkty współrzędnych, a`POLYGON`, a na koniecobiektu`sfc`, jak opisano w rozdziale @ref(spatial-class):
+
+```{r}
+polygon_matrix = cbind(
+  x = c(0, 0, 1, 1,   0),
+  y = c(0, 1, 1, 0.5, 0)
+)
+polygon_sfc = st_sfc(st_polygon(list(polygon_matrix)))
+```
+
+Stworzymy dodatkowe geometrie, aby zademonstrować relacje przestrzenne za pomocą następujących poleceń, które po narysowaniu na utworzonym powyżej wielokącie odnoszą się do siebie w przestrzeni, jak pokazano na rysunku @ref(fig:relation-objects).
+Należy zwrócić uwagę na użycie funkcji`st_as_sf()`i argumentu`coords`w celu efektywnego przekształcenia ramki danych zawierającej kolumny reprezentujące współrzędne wobiekt`sf`  zawierający punkty:
+
+```{r}
+point_df = data.frame(
+  x = c(0.2, 0.7, 0.4),
+  y = c(0.1, 0.2, 0.8)
+)
+point_sf = st_as_sf(point_df, coords = c("x", "y"))
+```
+
+```{r relation-objects, echo=FALSE, fig.cap="Points, line and polygon objects arranged to illustrate topological relations.", fig.asp=1, out.width="50%", fig.scap="Demonstration of topological relations."}
+par(pty = "s")
+plot(polygon_sfc, border = "red", col = "gray", axes = TRUE)
+plot(point_sf, add = TRUE, lab = 1:4, cex = 2)
+text(point_df[, 1] + 0.02, point_df[, 2] + 0.04, 1:3, cex = 1.3)
+```
+
+Proste zapytanie brzmi: które z punktów w`point_sf`przecinają się w jakiś sposób z wielokątem`polygon_sfc`?
+Odpowiedź na to pytanie można uzyskać poprzez sprawdzenie (punkty 1 i 3 stykają się odpowiednio z wielokątem i znajdują się w jego obrębie).
+Na to pytanie można odpowiedzieć za pomocą predykatu przestrzennego`st_intersects()`w następujący sposób:
+
+```{r 04-spatial-operations-9, eval=FALSE}
+st_intersects(point_sf, polygon_sfc)
+#> Sparse geometry binary predicate... `intersects'
+#>  1: 1
+#>  2: (empty)
+#>  3: 1
+```
+
+Wynik powinien być zgodny z intuicją:dla pierwszego i trzeciego
+punktu zwracane są wynikidodatnie (`1`), a dla drugiego punktu wynik ujemny (reprezentowany przez pusty wektor),ponieważ punkty teznajdują się poza granicą wielokąta.
+Nieoczekiwane może być to, że wynik ma postać listy wektorów.
+Ta*rzadka macierz*rejestruje tylko relacje, jeśli takie istnieją, zmniejszając wymagania pamięciowe operacji topologicznych na obiektach wielofunkcyjnych.
+Jak widzieliśmy w poprzedniej sekcji,*gęsta macierz*składająca się zwartości`TRUE``FALSE`lubjest zwracana,gdy`sparse = FALSE`.
+
+```{r 04-spatial-operations-10}
+st_intersects(point_sf, polygon_sfc, sparse = FALSE)
+```
+
+W powyższym wyniku każdy wiersz reprezentuje cechę wobiekciedocelowym (argument`x`), a każda kolumna reprezentuje cechę w obiekcie wybierającym (`y`).
+W tym przypadku w`y`obiekciejest tylko`polygon_sfc`jedna cecha,więc wynik, który można wykorzystać do tworzenia podzbiorów,jak widzieliśmy w sekcji @ref(spatial-subsetting), ma tylko jedną kolumnę.
+
+`st_intersects()`zwraca`TRUE`nawet w przypadkach, gdy cechy tylko się stykają:*intersects*\\index{intersects}jest operacją topologiczną typu „catch-all”, która identyfikuje wiele rodzajów relacji przestrzennych, jak pokazano na rysunku @ref(fig:relations).
+Bardziej restrykcyjne pytania obejmują: które punkty leżą w obrębie wielokąta i które obiekty znajdują się na wspólnej granicy lub ją`y`zawierają?
+Odpowiedzi na te pytania są następujące (wyniki nie są pokazane):
+
+```{r 04-spatial-operations-9-2, eval=FALSE}
+st_within(point_sf, polygon_sfc)
+st_touches(point_sf, polygon_sfc)
+```
+
+Należy zauważyć, że chociaż pierwszy punkt*styka się*z wielokątem granicznym, nie znajduje się w jego obrębie; trzeci punkt znajduje się w obrębie wielokąta, ale nie styka się z żadną częścią jego granicy.
+Przeciwieństwem`st_intersects()`jest`st_disjoint()`, która zwraca tylko obiekty, które nie są w żaden sposób powiązane przestrzennie z obiektem wybierającym (należy pamiętać,`[, 1]`konwertuje wynik na wektor).
+
+```{r 04-spatial-operations-11}
+st_disjoint(point_sf, polygon_sfc, sparse = FALSE)[, 1]
+```
+
+Funkcja`st_is_within_distance()`wykrywa obiekty,które*prawie stykają się*z obiektem wyboru, i ma dodatkowy`dist`argument .
+Można go użyć do ustawienia odległości, w jakiej muszą znajdować się obiekty docelowe, aby zostały wybrane.Dwójkowy predykat
+przestrzenny „znajduje się w odległości” jest pokazany w poniższym fragmencie kodu, którego wyniki pokazują, że każdy punkt znajduje się w odległości 0,2 jednostki od wielokąta.
+
+```{r 04-spatial-operations-14}
+st_is_within_distance(point_sf, polygon_sfc, dist = 0.2, sparse = FALSE)[, 1]
+```
+
+Należy zauważyć, że chociaż punkt 2 znajduje się w odległości większej niż 0,2 jednostki od najbliższego wierzchołka`polygon_sfc`, nadal jest on wybierany, gdy odległość jest ustawiona na 0,2.
+Wynika to z faktu, że odległość jest mierzona do najbliższej krawędzi, w tym przypadku do części wielokąta, która znajduje się bezpośrednio nad punktem 2 na rysunku @ref(fig:relation-objects).
+(Można sprawdzić, że rzeczywista odległość między punktem 2 a wielokątem wynosi 0,13 za pomocą polecenia`st_distance(point_sf, polygon_sfc)`.)
+
+### Relacje
+
+```{r, eval=FALSE, echo=FALSE}
+# verify distances to the polygon with reference to paragraph above:
+st_distance(point_sf, polygon_sfc)
+#           [,1]
+# [1,] 0.0000000
+# [2,] 0.1341641
+# [3,] 0.0000000
+```
+
+```{block2 04-spatial-operations-15, type="rmdnote"}
+Functions for calculating topological relations use spatial indices to largely speed up spatial query performance.
+They achieve that using the Sort-Tile-Recursive (STR) algorithm.
+The `st_join` function, mentioned in the next section, also uses the spatial indexing. 
+You can learn more at https://www.r-spatial.org/r/2017/06/22/spatial-index.html.
+```
+
+```{r 04-spatial-operations-16, eval=FALSE, echo=FALSE}
+# other tests
+st_overlaps(point_sf, polygon_sfc, sparse = FALSE)
+st_covers(point_sf, polygon_sfc, sparse = FALSE)
+st_covered_by(point_sf, polygon_sfc, sparse = FALSE)
+```
+
+```{r 04-spatial-operations-17, eval=FALSE, echo=FALSE}
+st_contains(a, p[2, ], sparse = TRUE)
+```
+
+```{r 04-spatial-operations-18, eval=FALSE, echo=FALSE}
+# starting simpler so commented
+a1 = st_polygon(list(rbind(c(-1, -1), c(1, -1), c(1, 1), c(-1, -1))))
+a2 = st_polygon(list(rbind(c(2, 0), c(2, 2), c(3, 2), c(3, 0), c(2, 0))))
+a = st_sfc(a1, a2)
+
+b1 = a1 * 0.5
+b2 = a2 * 0.4 + c(1, 0.5)
+b = st_sfc(b1, b2)
+
+l1 = st_linestring(x = matrix(c(0, 3, -1, 1), , 2))
+l2 = st_linestring(x = matrix(c(-1, -1, -0.5, 1), , 2))
+l = st_sfc(l1, l2)
+
+p = st_multipoint(x = matrix(c(0.5, 1, -1, 0, 1, 0.5), , 2))
+
+plot(a, border = "red", axes = TRUE)
+plot(b, border = "green", add = TRUE)
+plot(l, add = TRUE)
+plot(p, add = TRUE)
+```
+
+### odległości
+
+Podczas gdy relacje topologiczne przedstawione w poprzedniej sekcji są binarne (obiekt albo przecina się z innym, albo nie), relacje odległości są ciągłe\\index{distance relations}.
+Odległość między dwoma`sf`obiektami jest obliczana za pomocą`st_distance()`, które jest również używane w sekcji @ref(non-overlapping-joins) do łączenia opartego na odległości.
+Ilustruje to poniższy fragment kodu, który oblicza odległość między najwyższym punktem w Nowej Zelandii a środkiem ciężkości regionu Canterbury, utworzonym w sekcji @ref(spatial-subsetting):
+\\index{vector!distance relations}
+
+```{r 04-spatial-operations-31, warning=FALSE}
+nz_highest = nz_height |> slice_max(n = 1, order_by = elevation)
+canterbury_centroid = st_centroid(canterbury)
+st_distance(nz_highest, canterbury_centroid)
+```
+
+Wynik zawiera dwie potencjalnie zaskakujące rzeczy:
+
+- zawiera`units`, co oznacza, że odległość wynosi 100 000 metrów, a nie 100 000 cali ani żadną inną miarę odległości.
+- Jest zwracany jako macierz, mimo że wynik zawiera tylko jedną wartość.
+
+Ta druga cecha wskazuje na kolejną użyteczną funkcję,`st_distance()`czylimożliwość zwracania*macierzy odległości*między wszystkimi kombinacjami cech w obiektach`x`i`y`.
+Ilustruje to poniższe polecenie, które wyszukuje odległości między trzema pierwszymi cechami w`nz_height`a regionami Otago i Canterbury w Nowej Zelandii reprezentowanymi przez obiekt`co`.
+
+```{r 04-spatial-operations-32}
+co = filter(nz, grepl("Canter|Otag", Name))
+st_distance(nz_height[1:3, ], co)
+```
+
+Należy zauważyć, że odległość między drugą i trzecią cechą w`nz_height`a drugą cechą w`co`wynosi zero.Pokazuje
+to, że odległości między punktami a wielokątami odnoszą się do odległości do*dowolnej części wielokąta*.
+Drugi i trzeci punkt w`nz_height`znajdują się*w*Otago, co można zweryfikować, wykreślając je (wynik nie jest pokazany):
+
+```{r 04-spatial-operations-33, eval=FALSE}
+plot(st_geometry(co)[2])
+plot(st_geometry(nz_height)[2:3], add = TRUE)
+```
+
+### Ciągi{#DE-9IM-strings}DE-9IM
+
+Podstawą predykatów binarnych przedstawionych w poprzedniej sekcji jest model Dimensionally Extended 9-Intersection Model (DE-9IM)\\index{topological relations!DE-9IM}.
+Jak sugeruje tajemnicza nazwa, nie jest to łatwy temat do zrozumienia, ale warto go poznać, ponieważ leży u podstaw wielu operacji przestrzennych i umożliwia tworzenie niestandardowych predykatów przestrzennych.
+ Model ten został pierwotnie nazwany przez jego twórców „DE + 9IM”, co odnosi się do „wymiaru przecięć granic, wnętrz i zewnętrznych części dwóch obiektów” [@clementini_comparison_1995] , ale obecnie jest on określany jako DE-9IM [@shen_classification_2018] .
+DE-9IM ma zastosowanie do obiektów dwuwymiarowych (punktów, linii i wielokątów) w przestrzeni euklidesowej, co oznacza, że model (i oprogramowanie go implementujące, takie jak GEOS) zakłada, że pracujesz z danymi w rzutowanym układzie odniesienia współrzędnych, opisanym w rozdziale @ref(reproj-geo-data).
+
+```{r de-9im, echo=FALSE, eval=FALSE}
+# Todo one day: revive this
+b = st_sfc(st_point(c(0, 1)), st_point(c(1, 1))) # create 2 points
+b = st_buffer(b, dist = 1) # convert points to circles
+bsf = sf::st_sf(data.frame(Object = c("a", "b")), geometry = b)
+b9 = replicate(bsf, n = 9, simplify = FALSE)
+b9sf = do.call(rbind, b9)
+domains = c("Interior", "Boundary", "Exterior")
+b9sf$domain_a = rep(rep(domains, 3), each = 2)
+b9sf$domain_b = rep(rep(domains, each = 3), each = 2)
+library(ggplot2)
+ggplot(b9sf) +
+  geom_sf() +
+  facet_grid(domain_a ~ domain_b)
+
+plot(b9sf)
+tmap_arrange(
+  tm_shape(b) + tm_polygons(alpha = 0.5) + tm_layout(title = "Interior-Interior"),
+  tm_shape(b) + tm_polygons(alpha = 0.5) + tm_layout(title = "Interior-Boundary"),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  tm_shape(b) + tm_polygons(alpha = 0.5),
+  nrow = 3
+)
+
+plot(b)
+text(x = c(-0.5, 1.5), y = 1, labels = c("x", "y")) # add text
+```
+
+Aby zademonstrować działanie ciągów DE-9IM, przyjrzyjmy się różnym sposobom powiązania pierwszej pary geometrii na rysunku @ref(fig:relations).
+Rysunek @ref(fig:de9imgg) ilustruje model 9-przecięć (9IM), który pokazuje przecięcia między każdą kombinacją wnętrza, granicy i zewnętrznej części każdego obiektu: gdy każdy element pierwszego obiektu`x`jest ułożony w kolumnach, a każdy element`y`jest ułożony w wierszach, tworzona jest grafika fasetowa z zaznaczonymi przecięciami między każdym elementem.
+
+```{r de9imgg, echo=FALSE, warning=FALSE, fig.cap="Illustration of how the Dimensionally Extended 9 Intersection Model (DE-9IM) works. Colors not in the legend represent the overlap between different components. The thick lines highlight two-dimensional intersections, e.g., between the boundary of object x and the interior of object y, shown in the middle top facet.", message=FALSE}
+p1_2 = st_as_sf(c(p1, p3))
+ii = st_as_sf(st_intersection(p1, p3))
+ii$Object = "Intersection"
+ii$domain_a = "Interior"
+ii$domain_b = "Interior"
+
+bi = st_sf(x = st_intersection(
+  st_cast(p1, "LINESTRING"),
+  st_difference(p3, st_buffer(st_cast(p3, "LINESTRING"), dist = 0.01))
+  ))
+bi = st_buffer(bi, dist = 0.01)
+bi$Object = "Intersection"
+bi$domain_a = "Boundary"
+bi$domain_b = "Interior"
+
+ei = st_sf(x = st_difference(p3, p1))
+ei$Object = "Intersection"
+ei$domain_a = "Exterior"
+ei$domain_b = "Interior"
+
+ib = st_sf(x = st_intersection(
+  st_cast(p3, "LINESTRING"),
+  st_difference(p1, st_buffer(st_cast(p1, "LINESTRING"), dist = 0.005))
+  ))
+ib = st_buffer(ib, dist = 0.01)
+ib$Object = "Intersection"
+ib$domain_a = "Interior"
+ib$domain_b = "Boundary"
+
+bb = st_cast(ii, "POINT")
+bb_line = st_sf(x = st_sfc(st_linestring(matrix(c(1, 0.5, 1, 0.7), nrow = 2, byrow = TRUE))))
+bb_line_buffer = st_buffer(bb_line, dist = 0.01)
+bb_buffer = st_buffer(bb, dist = 0.01)
+bb = st_union(bb_buffer, bb_line_buffer)
+bb$Object = "Intersection"
+bb$domain_a = "Boundary"
+bb$domain_b = "Boundary"
+
+eb = st_sf(x = st_difference(
+  st_cast(p3, "LINESTRING"),
+  p1
+  ))
+eb = st_buffer(eb, dist = 0.01)
+eb$Object = "Intersection"
+eb$domain_a = "Exterior"
+eb$domain_b = "Boundary"
+
+ie = st_sf(x = st_difference(p1, p3))
+ie$Object = "Intersection"
+ie$domain_a = "Interior"
+ie$domain_b = "Exterior"
+
+be = st_sf(x = st_difference(
+  st_cast(p1, "LINESTRING"),
+  p3
+  ))
+be = st_buffer(be, dist = 0.01)
+be$Object = "Intersection"
+be$domain_a = "Boundary"
+be$domain_b = "Exterior"
+
+ee = st_sf(x = st_difference(
+  st_buffer(st_union(p1, p3), 0.02),
+  st_union(p1, p3)
+  ))
+ee$Object = "Intersection"
+ee$domain_a = "Exterior"
+ee$domain_b = "Exterior"
+
+b9 = replicate(p1_2, n = 9, simplify = FALSE)
+b9sf = do.call(rbind, b9)
+b9sf$Object = rep(c("x", "y"), 9)
+domains = c("Interior", "Boundary", "Exterior")
+b9sf$domain_a = rep(rep(domains, 3), each = 2)
+b9sf$domain_b = rep(rep(domains, each = 3), each = 2)
+b9sf = rbind(b9sf, ii, bi, ei, ib, bb, eb, ie, be, ee)
+b9sf$domain_a = ordered(b9sf$domain_a, levels = c("Interior", "Boundary", "Exterior"))
+b9sf$domain_b = ordered(b9sf$domain_b, levels = c("Interior", "Boundary", "Exterior"))
+b9sf = b9sf |> 
+  mutate(alpha = case_when(
+   Object == "x" ~ 0.1, 
+   Object == "y" ~ 0.1, 
+   TRUE ~ 0.2 
+  ))
+library(ggplot2)
+ggplot(b9sf) +
+  geom_sf(aes(fill = Object, alpha = alpha)) +
+  facet_grid(domain_b ~ domain_a) +
+  scale_fill_manual(values = c("red", "lightblue", "yellow"), position = "top", name = "") +
+  scale_alpha_continuous(range = c(0.3, 0.9)) +
+  guides(alpha = "none") +
+  theme_void() +
+  theme(legend.position = "top")
+```
+
+Ciągi DE-9IM pochodzą z wymiarów każdego typu relacji.
+W tym przypadku czerwone przecięcia na rysunku @ref(fig:de9imgg) mają wymiary 0 (punkty), 1 (linie) i 2 (wielokąty), jak pokazano w tabeli @ref(tab:de9emtable).
+
+```{r de9emtable, echo=FALSE}
+# See https://github.com/geocompx/geocompr/issues/699
+pattern = st_relate(p1, p3)
+matrix_de_9im = function(pattern) {
+    string = unlist(strsplit(pattern , ""))
+    matrix_de_9im = matrix(string, nrow = 3, byrow = TRUE)
+    colnames(matrix_de_9im) = c("I", "B", "E")
+    row.names(matrix_de_9im) = c("I", "B", "E")
+    return(matrix_de_9im)
+}
+
+m = matrix_de_9im(pattern)
+colnames(m) = c("Interior (x)", "Boundary (x)", "Exterior (x)")
+rownames(m) = c("Interior (y)", "Boundary (y)", "Exterior (y)")
+knitr::kable(m, caption = "Relations between interiors, boundaries and exteriors of geometries x and y.")
+```
+
+Spłaszczenie tej macierzy „wzdłuż wierszy” (czyli połączenie pierwszego wiersza, następnie drugiego, a potem trzeciego) daje ciąg znaków`212111212`.
+Inny przykład posłuży do zilustrowania działania systemu:
+relacja pokazana na rysunku @ref(fig:relations) (trzecia para wielokątów w trzeciej kolumnie i pierwszym wierszu) może być zdefiniowana w systemie DE-9IM w następujący sposób:
+
+- Punkty przecięcia między*wnętrzem*większego obiektu`x`a wnętrzem, granicą i zewnętrzem`y`mają wymiary odpowiednio 2, 1 i 2.
+- Punkty przecięcia między*granicą*większego obiektu`x`a wnętrzem, granicą i zewnętrzem`y`mają wymiary odpowiednio F i F i 1, gdzie „F” oznacza „fałsz”, obiekty są rozłączne.
+- Przecięcia między*zewnętrzną*częścią`x`a wnętrzem, granicą i zewnętrzną częścią`y`mają wymiary odpowiednio F, F i 2: zewnętrzna część większego obiektu nie styka się z wnętrzem ani`y`granicą, ale zewnętrzna część mniejszego i większego obiektu pokrywa ten sam obszar
+
+Te trzy elementy po połączeniu tworzą ciąg`212`znaków`FF1`,, i`FF2`.Jest
+to taki sam wynik,
+
+- 
+
+jaki uzyskuje się z funkcji`st_relate()`(zobacz kod źródłowy tego rozdziału,aby dowiedzieć się, jak utworzono inne geometrie na rysunku @ref(fig:relations)):
+
+```{r}
+xy2sfc = function(x, y) st_sfc(st_polygon(list(cbind(x, y))))
+x = xy2sfc(x = c(0, 0, 1, 1, 0), y = c(0, 1, 1, 0.5, 0))
+y = xy2sfc(x = c(0.7, 0.7, 0.9, 0.7), y = c(0.8, 0.5, 0.5, 0.8))
+st_relate(x, y)
+```
+
+Zrozumienie ciągów DE-9IM pozwala na opracowanie nowych binarnych predykatów przestrzennych.
+Strona pomocy`?st_relate`zawiera definicje funkcji dla relacji
+„królowa” i „wieża”, w których wielokąty dzielą odpowiednio granicę lub tylko punkt.Relacje „królowej” oznaczają, że relacje „granica-granica” (komórka w drugiej kolumnie i drugim wierszu tabeli @ref(tab:de9emtable) lub piąty element ciągu DE-9IM) nie mogą być puste, co odpowiada wzorcowi`F***T****`, natomiast w przypadku relacji „wieży” ten sam element musi mieć wartość 1 (co oznacza liniowe przecięcie) (patrz rysunek @ref(fig:queens)).
+Zostało to zaimplementowane w następujący sposób:
+
+```{r}
+st_queen = function(x, y) st_relate(x, y, pattern = "F***T****")
+st_rook = function(x, y) st_relate(x, y, pattern = "F***1****")
+```
+
+Opierając się nautworzonym wcześniej`x`obiekcie, możemy użyć nowo utworzonych funkcji, aby dowiedzieć się, które elementy w siatce są „królową” i „wieżą” w odniesieniu do środkowego kwadratu siatki, w następujący sposób:
+
+```{r queenscode, fig.show="hide"}
+grid = st_make_grid(x, n = 3)
+grid_sf = st_sf(grid)
+grid_sf$queens = lengths(st_queen(grid, grid[5])) > 0
+plot(grid, col = grid_sf$queens)
+grid_sf$rooks = lengths(st_rook(grid, grid[5])) > 0
+plot(grid, col = grid_sf$rooks)
+```
+
+```{r queens, fig.cap="Demonstration of custom binary spatial predicates for finding queen (left) and rook (right) relations to the central square in a grid with 9 geometries.", echo=FALSE, warning=FALSE}
+st_crs(grid_sf) = "EPSG:2180"
+tm_shape(grid_sf) +
+  tm_fill(fill = c("queens", "rooks"), 
+          fill.scale = tm_scale(values = c("white", "black"))) +
+  tm_shape(grid_sf) +
+  tm_borders(col = "gray", lwd = 2) +
+  tm_layout(frame = FALSE, legend.show = FALSE,
+            panel.labels = c("queen", "rook"))
+```
+
+<!-- Kolejnym niestandardowym predykatem przestrzennym jest „nakładające się linie”, który wykrywa linie nakładające się na część lub całość geometrii innej linii. -->
+
+<!-- Można to zaimplementować w następujący sposób, gdzie wzorzec oznacza, że przecięcie między dwoma wnętrzami linii musi być linią: -->
+
+### Łączenie
+
+```{r, echo=FALSE, eval=FALSE}
+st_lineoverlap = function(x, y) st_relate(x, y, pattern = "T*1******")
+line1 = st_sfc(st_linestring(cbind(
+  x = c(0, 0.8),
+  y = c(0, 0)
+)))
+line2 = st_sfc(st_linestring(cbind(
+  x = c(0.1, 0.5),
+  y = c(0, 0)
+)))
+line3 = st_sfc(st_linestring(cbind(
+  x = c(0, 0.5),
+  y = c(0, 0.2)
+)))
+st_queen(line1, line2)
+st_relate(line1, line2)
+st_relate(line1, line3)
+st_lineoverlap(line1, line2)
+st_lineoverlap(line1, line3)
+de_9im(line1, line2)
+# test the function
+rnet = pct::get_pct_rnet(region = "isle-of-wight")
+osm_net = osmextract::oe_get_network(place = "isle-of-wight", mode = "driving")
+sel = st_relate(rnet, osm_net, pattern = "T*1******")
+summary(lengths(sel) > 0)
+rnet_joined1 = st_join(rnet, osm_net, join = st_lineoverlap)
+rnet_joined2 = st_join(rnet, osm_net, join = st_relate, pattern = "T*1******")
+rnet_joined3 = st_join(rnet, osm_net)
+summary(is.na(rnet_joined1$osm_id))
+summary(is.na(rnet_joined2$osm_id))
+summary(is.na(rnet_joined3$osm_id))
+sel_relates = st_relate(rnet[1, ], osm_net)
+dim(sel_relates)
+sel_table = table(sel_relates)
+sel_table
+dim(sel_table)
+sel_restrictive = sel_relates[1, ] == "0F1FF0102"
+summary(sel_restrictive)
+nrow(osm_net)
+mapview::mapview(rnet[1, ]) + mapview::mapview(osm_net[sel_restrictive, ])
+
+rnet_approx = rnet
+st_precision(rnet_approx) = 100
+head(st_coordinates(rnet_approx))
+
+sel_relates = st_relate(rnet_approx[1, ], osm_net)
+dim(sel_relates)
+sel_table = table(sel_relates)
+sel_table
+```
+
+### przestrzenne
+
+Łączenie dwóch nieprzestrzennych zbiorów danych opiera się na wspólnej zmiennej „kluczowej”, jak opisano w sekcji @ref(vector-attribute-joining).Łączenie
+danych przestrzennych opiera się na tej samej koncepcji, ale zamiast tego opiera się na relacjach przestrzennych, opisanych w poprzedniej sekcji.
+Podobnie jak w przypadku danych atrybutowych, łączenie dodaje nowe kolumny do obiektu docelowego (argument`x`w funkcjach łączenia) z obiektu źródłowego (`y`).
+\\index{join!spatial}
+\\index{spatial!join}
+
+Proces ten ilustruje poniższy przykład: wyobraź sobie, że masz dziesięć punktów rozmieszczonych losowo na powierzchni Ziemi i pytasz, w jakich krajach znajdują się punkty położone na lądzie.
+Wdrożenie tej idei w[powtarzalnym przykładzie](https://github.com/geocompx/geocompr/blob/main/code/04-spatial-join.R)pozwoli Ci rozwinąć umiejętności obsługi danych geograficznych i pokaże, jak działają połączenia przestrzenne.
+Punktem wyjścia jest utworzenie punktów rozmieszczonych losowo na powierzchni Ziemi.
+
+```{r 04-spatial-operations-19}
+set.seed(2018) # set seed for reproducibility
+(bb = st_bbox(world)) # the world's bounds
+random_df = data.frame(
+  x = runif(n = 10, min = bb[1], max = bb[3]),
+  y = runif(n = 10, min = bb[2], max = bb[4])
+)
+random_points = random_df |> 
+  st_as_sf(coords = c("x", "y"), crs = "EPSG:4326") # set coordinates and CRS
+```
+
+Scenariusz przedstawiony na rysunku @ref(fig:spatial-join) pokazuje, żeobiekt`random_points`  (u góry po lewej) nie ma danych atrybutowych, podczas gdy`world`(u góry po prawej) ma atrybuty, w tym nazwy krajów pokazane dla próby krajów w legendzie.Łączenie
+przestrzenne jest realizowane za pomocą`st_join()`, jak pokazano w poniższym fragmencie kodu.
+Wynikiem jestobiekt`random_joined`  ilustrowany na rysunku @ref(fig:spatial-join) (na dole po lewej stronie).
+Przed utworzeniem połączonego zestawu danych używamy przestrzennego podzbioru, aby utworzyć`world_random`, który zawiera tylko kraje zawierające losowe punkty, aby sprawdzić, czy liczba nazw krajów zwróconych w połączonym zestawie danych powinna wynosić cztery (rysunek @ref(fig:spatial-join), panel w prawym górnym rogu).
+
+```{r 04-spatial-operations-20, message=FALSE}
+world_random = world[random_points, ]
+nrow(world_random)
+random_joined = st_join(random_points, world["name_long"])
+```
+
+```{r spatial-join, echo=FALSE, fig.cap="Illustration of a spatial join. A new attribute variable is added to random points (top left) from source world object (top right) resulting in the data represented in the final panel.", fig.asp=0.5, warning=FALSE, message=FALSE, out.width="100%", fig.scap="Illustration of a spatial join."}
+source("code/04-spatial-join.R", print.eval = TRUE)
+```
+
+Domyślniewykonuje lewe`st_join()`połączenie, co oznacza, że wynikiem jest obiekt zawierający wszystkie wiersze z`x`, w tym wiersze bez dopasowania w`y`(patrz sekcja @ref(vector-attribute-joining)), ale może również wykonywać połączenia wewnętrzne poprzez ustawienie argumentu`left = FALSE`.
+Podobnie jak w przypadku podzbiorów przestrzennych, domyślnym operatorem topologicznym używanym przez`st_join()`jest`st_intersects()`, który można zmienić poprzez ustawienieargumentu`join`  (szczegółowe informacjeznajdują`?st_join`sięwsekcji).
+Powyższy przykład pokazuje dodanie kolumny z warstwy wielokątów do warstwy punktów, ale podejście to działa niezależnie od typów geometrii.
+W takich przypadkach, na przykład gdy`x`zawiera wielokąty, z których każdy pasuje do wielu obiektów w`y`, połączenia przestrzenne spowodują powielenie elementów poprzez utworzenie nowego wiersza dla każdego dopasowania w`y`.
+
+### Połączenia oparte na{#non-overlapping-joins}odległości
+
+Czasami dwa zbiory danych geograficznych nie przecinają się, ale nadal mają silny związek geograficzny ze względu na swoją bliskość.
+Zbiory danych`cycle_hire`i`cycle_hire_osm`, dołączone już dopakietu**spData**, stanowią dobry przykład.
+Wykres pokazuje, że są one często ściśle powiązane, ale nie stykają się, jak pokazano na rysunku @ref(fig:cycle-hire), którego podstawowa wersja została utworzona za pomocą poniższego kodu:
+\\index{join!non-overlapping}
+
+```{r 04-spatial-operations-21, eval=FALSE}
+plot(st_geometry(cycle_hire), col = "blue")
+plot(st_geometry(cycle_hire_osm), add = TRUE, pch = 3, col = "red")
+```
+
+Możemy sprawdzić, czy jakieś punkty są takie same, używając`st_intersects()`jak pokazano poniżej:
+
+```{r 04-spatial-operations-22, message=FALSE}
+any(st_intersects(cycle_hire, cycle_hire_osm, sparse = FALSE))
+```
+
+```{r 04-spatial-operations-23, echo=FALSE, eval=FALSE}
+# included to show alternative ways of showing there's no overlap
+sum(st_geometry(cycle_hire) %in% st_geometry(cycle_hire_osm))
+sum(st_coordinates(cycle_hire)[, 1] %in% st_coordinates(cycle_hire_osm)[, 1])
+```
+
+```{r cycle-hire, fig.cap="The spatial distribution of cycle hire points in London based on official data (blue) and OpenStreetMap data (red).", echo=FALSE, warning=FALSE, fig.scap="The spatial distribution of cycle hire points in London."}
+if (knitr::is_latex_output()){
+  knitr::include_graphics("images/cycle-hire-1.png")
+} else if (knitr::is_html_output()){
+  # library(tmap)
+  # osm_tiles = tmaptools::read_osm(tmaptools::bb(cycle_hire, ext = 1.3), type =   "https://korona.geog.uni-heidelberg.de/tiles/roadsg/x={x}&y={y}&z={z}")
+  # qtm(osm_tiles) +
+    # tm_shape(cycle_hire) +
+    # tm_bubbles(col = "blue", alpha = 0.5, size = 0.2) +
+    # tm_shape(cycle_hire_osm) +
+    # tm_bubbles(col = "red", alpha = 0.5, size = 0.2) +
+    # tm_scale_bar()
+  library(leaflet)
+  leaflet() |>
+    # addProviderTiles(providers$OpenStreetMap.BlackAndWhite) |>
+    addCircles(data = cycle_hire) |>
+    addCircles(data = cycle_hire_osm, col = "red")
+}
+```
+
+Wyobraźmy sobie, że musimy połączyćzmienną`capacity`  w`cycle_hire_osm`z oficjalnymi danymi „docelowymi” zawartymi w`cycle_hire`.
+W takiej sytuacji potrzebne jest połączenie bez nakładania się.
+Najprostszą metodą jest użycie predykatu`st_is_within_distance()`binarnego, jak pokazano poniżej przy użyciu odległości progowej 20 m.
+Można ustawić odległość progową w jednostkach metrycznych również dla danych nieprzekształconych (np. CRS lon/lat, takich jak WGS84), jeśli silnik geometrii sferycznej (S2) jest włączony, tak jak ma to miejscedomyślniew**sf**(patrz sekcja @ref(s2)).
+
+Pokazuje
+
+```{r 04-spatial-operations-24}
+sel = st_is_within_distance(cycle_hire, cycle_hire_osm, 
+                            dist = units::set_units(20, "m"))
+summary(lengths(sel) > 0)
+```
+
+to, żew obiekcie docelowym`cycle_hire`znajduje się`r sum(lengths(sel) > 0)`punktóww odległości`cycle_hire_osm`progowej.
+Jak pobrać*wartości*powiązane z odpowiednimi`cycle_hire_osm`punktami ?
+Rozwiązaniem jest ponownie, ale`st_join()`z dodatkowym`dist`argumentem (ustawionym na 20 m poniżej):
+
+```{r 04-spatial-operations-25}
+z = st_join(cycle_hire, cycle_hire_osm, st_is_within_distance, 
+            dist = units::set_units(20, "m"))
+nrow(cycle_hire)
+nrow(z)
+```
+
+Należy zauważyć, że liczba wierszy w połączonym wyniku jest większa niż w obiekcie docelowym.Wynika
+to z faktu, że niektóre stacje wypożyczania rowerów w`cycle_hire`mają wiele dopasowań w`cycle_hire_osm`.
+Aby zagregować wartości dla nakładających się punktów i zwrócić średnią, możemy użyć metod agregacji omówionych w rozdziale @ref(attr), co da w rezultacie obiekt o takiej samej liczbie wierszy jak obiekt docelowy.
+
+```{r 04-spatial-operations-26}
+z = z |> 
+  group_by(id) |> 
+  summarize(capacity = mean(capacity))
+nrow(z) == nrow(cycle_hire)
+```
+
+Pojemność pobliskich stacji można zweryfikować, porównując wykres pojemnościdanych`cycle_hire_osm`źródłowychz wynikami w tym nowym obiekcie (wykresy nie są pokazane):
+
+```{r 04-spatial-operations-27, eval=FALSE}
+plot(cycle_hire_osm["capacity"])
+plot(z["capacity"])
+```
+
+Wynik tego połączenia wykorzystał operację przestrzenną do zmiany danych atrybutów związanych z prostymi elementami; geometria związana z każdym elementem pozostała niezmieniona.
+
+### Agregacja przestrzenna{#spatial-aggr}
+
+Podobnie jak w przypadku agregacji danych atrybutowych, agregacja danych przestrzennych*powoduje skondensowanie*danych: agregowane wyniki mają mniej wierszy niż nieagregowane dane wejściowe.*Funkcje*
+*agregacji*statystycznej, takie jak średnia arytmetyczna lub suma, podsumowują wiele wartości \\index{statistics}zmiennej i zwracają jedną wartość na*zmienną grupującą*.
+W sekcji @ref(vector-attribute-aggregation) pokazano, w jaki sposób`aggregate()`i`group_by() |> summarize()`zagęszczają dane na podstawie zmiennych atrybutowych, natomiast w tej sekcji pokazano, w jaki sposób te same funkcje działają w przypadku obiektów przestrzennych.
+\\index{aggregation!spatial}
+
+Wracając do przykładu Nowej Zelandii, wyobraź sobie, że chcesz poznać średnią wysokość najwyższych punktów w każdym regionie: to geometria źródła (`y`lub`nz`w tym przypadku) określa, w jaki sposób wartości w obiekcie docelowym (`x`lub`nz_height`) są grupowane.
+Można to zrobić za pomocą jednej linii kodu z`aggregate()`metodąbazowego R.
+
+```{r 04-spatial-operations-28}
+nz_agg = aggregate(x = nz_height, by = nz, FUN = mean)
+```
+
+Wynikiem poprzedniego polecenia jestobiekt`sf`  o tej samej geometrii co obiekt agregujący (przestrzenny) (`nz`), co można zweryfikować za pomocą polecenia`identical(st_geometry(nz), st_geometry(nz_agg))`.
+Wynik poprzedniej operacji ilustruje rysunek @ref(fig:spatial-aggregation), który pokazuje średnią wartość obiektów w`nz_height`w każdym z 16 regionów Nowej Zelandii.
+Ten sam wynik można również uzyskać, przekazując dane wyjściowe z`st_join()`do funkcji „tidy”`group_by()`i`summarize()`w następujący sposób:
+
+```{r spatial-aggregation, echo=FALSE, fig.cap="Average height of the top 101 high points across the regions of New Zealand.", fig.asp=1, message=FALSE, out.width="50%"}
+library(tmap)
+tm_shape(nz_agg) +
+  tm_fill("elevation", 
+          fill.scale = tm_scale(breaks = seq(27, 30, by = 0.5) * 1e2)) +
+  tm_borders() +
+  tm_layout(scale = 1.8)
+```
+
+```{r 04-spatial-operations-29}
+nz_agg2 = st_join(x = nz, y = nz_height) |>
+  group_by(Name) |>
+  summarize(elevation = mean(elevation, na.rm = TRUE))
+```
+
+```{r test-tidy-spatial-join, eval=FALSE, echo=FALSE}
+plot(nz_agg)
+plot(nz_agg2)
+# aggregate looses the name of aggregating objects
+```
+
+Wynikowe`nz_agg`obiekty  mają taką samą geometrię jak obiekt agregujący`nz`,ale zawierają nową kolumnę podsumowującą wartości`x`w każdym regionie przy użyciu funkcji`mean()`.Zamiast`mean()`można
+tutajużyć innych funkcji, w`median()`tym,`sd()`i innych funkcji, które zwracają jedną wartość na grupę.
+Uwaga: jedną z różnic międzypodejściami`aggregate()``group_by() |> summarize()`ijest to, że pierwsze z nich powoduje powstanie`NA`wartości  dla niedopasowanych nazw regionów, podczas gdy drugie zachowuje nazwy regionów.
+Podejście „uporządkowane” jest zatem bardziej elastyczne pod względem funkcji agregujących i nazw kolumn wyników.Operacje
+agregujące, które tworzą również nowe geometrie, zostały omówione w sekcji @ref(geometry-unions).
+
+### Łączenie niespójnych warstw
+
+Spójność
+
+### {#incongruent}
+
+przestrzenna\\index{spatial congruence}jest ważną koncepcją związaną z agregacją przestrzenną.
+*Obiekt**agregujący*(który będziemy nazywać`y`) jest*zgodny*z obiektem docelowym (`x`), jeśli oba obiekty mają wspólne granice.
+Często ma to miejsce w przypadku danych dotyczących granic administracyjnych, gdzie większe jednostki — takie jak Middle Layer Super Output Areas ([MSOA](https://www.ons.gov.uk/methodology/geography/ukgeographies/censusgeography)) w Wielkiej Brytanii lub okręgi w wielu innych krajach europejskich — składają się z wielu mniejszych jednostek.
+
+Natomiast obiekty agregujące*niepasujące* nie mają wspólnych granic z celem [@qiu_development_2012] .
+Stanowi to problem dla agregacji przestrzennej (i innych operacji przestrzennych) przedstawionych na rysunku @ref(fig:areal-example): agregacja środka ciężkości każdej podstrefy nie da dokładnych wyników.
+ Interpolacja obszarowa rozwiązuje ten problem poprzez przenoszenie wartości z jednego zestawu jednostek obszarowych do innego, przy użyciu szeregu algorytmów, w tym prostych metod ważonych powierzchnią oraz bardziej zaawansowanych metod, takich jak metody „pykonofilaktyczne” [@tobler_smooth_1979] .
+
+```{r areal-example, echo=FALSE, fig.cap="Congruent (left) and incongruent (right) areal units with respect to larger aggregating zones (translucent red borders).", fig.asp=0.33, fig.scap="Congruent and incongruent areal units."}
+source("code/04-areal-example.R", print.eval = TRUE)
+```
+
+Pakiet**spData**zawiera zbiór danych o nazwie`incongruent`(kolorowe wielokąty z czarnymi obramowaniami w prawym panelu rysunku @ref(fig:areal-example)) oraz zbiór danych o nazwie`aggregating_zones`(dwa wielokąty z półprzezroczystym czerwonym obramowaniem w prawym panelu rysunku @ref(fig:areal-example)).
+Załóżmy, żekolumna`value`odnosi się`incongruent`do całkowitego dochodu regionalnego w milionach euro.
+Jak możemy przenieść wartości dziewięciu podstawowych wielokątów przestrzennych do dwóch`aggregating_zones`wielokątów?
+
+Najprostszą użyteczną metodą jestinterpolacja przestrzenna*ważona powierzchnią*, która przenosi wartości zobiektu`incongruent`  do nowej kolumny w`aggregating_zones`proporcjonalnie do powierzchni nakładania się: im większe jest przecięcie przestrzenne między cechami wejściowymi i wyjściowymi, tym większa jest odpowiednia wartość.Jest
+to zaimplementowane w`st_interpolate_aw()`, jak pokazano w poniższym fragmencie kodu.
+
+```{r 04-spatial-operations-30}
+iv = incongruent["value"] # keep only the values to be transferred
+agg_aw = st_interpolate_aw(iv, aggregating_zones, extensive = TRUE)
+agg_aw$value
+```
+
+W naszym przypadku sensowne jest zsumowanie wartości przecięć przypadających na strefy agregacji, ponieważ całkowity dochód jest tak zwaną zmienną przestrzennie ekstensywną (która rośnie wraz z powierzchnią), zakładając, że dochód jest równomiernie rozłożony w mniejszych strefach (stąd powyższy komunikat ostrzegawczy).
+Byłoby to inne w przypadkuzmiennych[intensywnych](https://geodacenter.github.io/workbook/3b_rates/lab3b.html#spatially-extensive-and-spatially-intensive-variables)przestrzennie,takich jak*średni*dochód lub wartości procentowe, które nie rosną wraz ze wzrostem powierzchni.
+`st_interpolate_aw()`działa tak samo w przypadku zmiennych intensywnych przestrzennie: ustawparametr`extensive`  na`FALSE`, a podczas agregacji zostanie użyta funkcja średniej zamiast funkcji sumy.
+
+## Operacje przestrzenne na danych{#spatial-ras}rastrowych
+
+Ta sekcja opiera się na sekcji @ref(manipulating-raster-objects), która przedstawia różne podstawowe metody manipulowania zbiorami danych rastrowych, aby zademonstrować bardziej zaawansowane i wyraźnie przestrzenne operacje rastrowe, i wykorzystuje obiekty`elev`i`grain`utworzone ręcznie w sekcji @ref(manipulating-raster-objects).
+Dla wygody czytelnika te zbiory danych można również znaleźć wpakiecie**spData**.
+
+```{r}
+elev = rast(system.file("raster/elev.tif", package = "spData"))
+grain = rast(system.file("raster/grain.tif", package = "spData"))
+```
+
+### Podzbiory przestrzenne{#spatial-raster-subsetting}
+
+W poprzednim rozdziale (sekcja @ref(manipulating-raster-objects)) pokazano, jak pobierać wartości powiązane z konkretnymi identyfikatorami komórek lub kombinacjami wierszy i kolumn.
+Obiekty rastrowe można również wyodrębnić według lokalizacji (współrzędnych) i innych obiektów przestrzennych.
+Aby użyć współrzędnych do tworzenia podzbiorów, można „przetłumaczyć” współrzędne na identyfikator komórki za pomocąfunkcji**terra**`cellFromXY()`.
+Alternatywą jest użycie`terra::extract()`(uwaga,w**tidyverse**\\index`extract()`znajduje się{tidyverse (package)}również funkcja o nazwie) do wyodrębniania wartości.
+Obie metody zostały przedstawione poniżej w celu znalezienia wartości komórki obejmującej punkt znajdujący się we współrzędnych 0,{raster!subsetting}
+1, 0
+,1.
+
+Obiekty
+
+{spatial!subsetting}
+
+```{r 04-spatial-operations-34, eval=FALSE}
+id = cellFromXY(elev, xy = matrix(c(0.1, 0.1), ncol = 2))
+elev[id]
+# the same as
+terra::extract(elev, matrix(c(0.1, 0.1), ncol = 2))
+```
+
+rastrowe można również podzielić na podzbiory za pomocą innego obiektu rastrowego, jak pokazano w poniższym fragmencie kodu:
+
+```{r 04-spatial-operations-35, eval=FALSE}
+clip = rast(xmin = 0.9, xmax = 1.8, ymin = -0.45, ymax = 0.45,
+            resolution = 0.3, vals = rep(1, 9))
+elev[clip]
+# we can also use extract
+# terra::extract(elev, ext(clip))
+```
+
+Sprowadza się to do pobrania wartości pierwszego obiektu rastrowego (w tym przypadku`elev`),które mieszczą się w zakresie drugiego rastra (tutaj:`clip`).
+
+Powyższy przykład zwrócił wartości określonych komórek, ale w wielu przypadkach potrzebne są przestrzenne wyniki operacji podziału zbiorów danych rastrowych.
+Można to zrobić, ustawiającargument`drop`operatora`[`  na`FALSE`.Poniższy
+kod zwraca pierwsze dwie komórki, tj`elev`. pierwsze dwie komórki górnego wiersza, jako obiekt rastrowy (pokazano tylko pierwsze 2 wiersze wyniku):
+
+```{r 04-spatial-operations-36, eval=FALSE}
+elev[1:2, drop = FALSE]    # spatial subsetting with cell IDs
+#> class       : SpatRaster 
+#> dimensions  : 1, 2, 1  (nrow, ncol, nlyr)
+#> ...
+```
+
+```{r 04-spatial-operations-37, echo=FALSE, eval=FALSE}
+# aim: illustrate the result of previous spatial subsetting example
+x = elev[1, 1:2, drop = FALSE]
+plot(x)
+```
+
+Innym częstym przypadkiem użycia podzbiorów przestrzennych jest sytuacja, w której raster owartościach`logical`(lub`NA`) jest używany do maskowania innego rastra o tym samym zasięgu i rozdzielczości, jak pokazano na rysunku @ref(fig:raster-subset).
+W tym przypadkumożna użyć funkcji`[``mask()`i(wyniki nie są pokazane).
+
+```{r raster-subset, echo=FALSE, fig.cap="Original raster (left), raster mask (middle), and output of masking a raster (right).", fig.scap="Subsetting raster values."}
+knitr::include_graphics("images/04_raster_subset.png")
+```
+
+```{r 04-spatial-operations-38, eval=FALSE}
+# create raster mask
+rmask = elev
+values(rmask) = sample(c(NA, TRUE), 36, replace = TRUE)
+```
+
+W powyższym fragmencie kodu utworzyliśmy obiekt maski o nazwie`rmask`z wartościami przypisanymi losowo do`NA`i`TRUE`.
+Następnie chcemy zachować te wartości  ,`elev`które są`TRUE`w`rmask`.
+Innymi słowy, chcemy zamaskować`elev`za pomocą`rmask`.
+
+```{r 04-spatial-operations-38b, eval=FALSE}
+# spatial subsetting
+elev[rmask, drop = FALSE]           # with [ operator
+# we can also use mask
+# mask(elev, rmask)
+```
+
+Powyższe podejście można również wykorzystać do zastąpienia niektórych wartości (np. tych, które prawdopodobnie są błędne) wartością NA.
+
+Operacje
+
+```{r 04-spatial-operations-38c, eval=FALSE}
+elev[elev < 20] = NA
+```
+
+te są w rzeczywistości lokalnymi operacjami boolowskimi
+
+,
+
+ponieważ porównujemy dwie rastrowe komórki.
+W następnym podrozdziale omówiono te i powiązane operacje bardziej szczegółowo.
+
+### Algebra map
+
+Termin{map algebra}
+„algebra map” został ukuty pod koniec lat 70. XX wieku w celu opisania „zestawu konwencji, możliwości i technik” służących do analizy danych rastrowe o charakterze geograficznym*oraz* (choć w mniejszym stopniu) danych wektorowych [@tomlin_map_1994] .
+W tym kontekście definiujemy algebrę map w węższym znaczeniu, jako operacje modyfikujące lub podsumowujące wartości komórek rastra, w odniesieniu do otaczających komórek, stref lub funkcji statystycznych, które mają zastosowanie do każdej komórki.
+
+Operacje algebry map są zazwyczaj szybkie, ponieważ zbiory danych rastrowe przechowują współrzędne tylko w sposób domyślny, stąd[stare powiedzenie](https://geozoneblog.wordpress.com/2013/04/19/raster-vs-vector/)„raster jest szybszy, ale wektor jest dokładniejszy”.
+Lokalizację komórek w zbiorach danych rastrowych można obliczyć na podstawie ich pozycji w macierzy oraz rozdzielczości i pochodzenia zbioru danych (zapisanego w nagłówku).Jednak
+do przetwarzania położenie geograficzne komórki nie ma większego znaczenia, o ile po przetworzeniu pozycja komórki pozostaje niezmieniona.
+Ponadto, jeśli dwa lub więcej zbiorów danych rastrowych ma ten sam zasięg, projekcję i rozdzielczość, można je traktować jako macierze do przetwarzania.
+
+W ten sposób działa algebra map wpakiecie**terra**.
+Najpierw sprawdzane są nagłówki zbiorów danych rastrowych (w przypadkach, gdy operacje algebry map działają na więcej niż jednym zbiorze danych) w celu zapewnienia zgodności zbiorów danych.
+Po drugie, algebra map zachowuje tak zwaną jednoznaczną zgodność lokalizacji, co oznacza, że komórki nie mogą się przemieszczać.Różni
+się to od algebry macierzowej, w której wartości zmieniają pozycję, na przykład podczas mnożenia lub dzielenia macierzy.
+
+Algebra map (lub modelowanie kartograficzne z wykorzystaniem danych rastrowych) dzieli operacje rastrowe na cztery podklasy [@tomlin_geographic_1990] , z których każda działa jednocześnie na jednej lub kilku siatkach:
+
+1. Operacje*lokalne*lub na komórki
+2. Operacje*ogniskowe*lub sąsiedzkie.
+   Najczęściej wartość komórki wyjściowej jest wynikiem bloku komórek wejściowych 3 x 3.
+3. Operacje*strefowe*są podobne do operacji ogniskowych, ale otaczająca siatka pikseli, na której obliczane są nowe wartości, może mieć nieregularne rozmiary i kształty
+4. . Operacje*globalne*lub na rastrze.Oznacza
+   to, że komórka wyjściowa potencjalnie uzyskuje swoją wartość z jednego lub kilku całych rastrów
+
+. Ta typologia klasyfikuje operacje algebry map według liczby komórek użytych do każdego etapu przetwarzania pikseli oraz typu wyjścia.
+Dla kompletności należy wspomnieć, że operacje rastrowe można również klasyfikować według dyscyplin, takich jak teren, analiza hydrologiczna lub klasyfikacja obrazów.
+W kolejnych sekcjach wyjaśniono, w jaki sposób można wykorzystać każdy rodzaj operacji algebry map, odwołując się do przykładów praktycznych.
+
+### Operacje lokalne
+
+\\indexOperacje{map algebra!local operations}
+**lokalne**obejmują wszystkie operacje komórka po komórce w jednej lub kilku warstwach.
+Obejmują one dodawanie lub odejmowanie wartości z rastra, podnoszenie do kwadratu i mnożenie rastrów.
+Algebra rastrowa umożliwia również operacje logiczne, takie jak wyszukiwanie wszystkich komórek rastra, których wartość jest większa od określonej wartości (w naszym przykładzie poniżej jest to 5).
+Pakiet**terra**obsługuje wszystkie te operacje i wiele innych, jak pokazano poniżej (rysunek @ref(fig:04-local-operations)):
+
+```{r 04-spatial-operations-41, eval=FALSE}
+elev + elev
+elev^2
+log(elev)
+elev > 5
+```
+
+```{r 04-local-operations, echo=FALSE, fig.cap="Examples of different local operations of the elev raster object: adding two rasters, squaring, applying logarithmic transformation, and performing a logical operation."}
+knitr::include_graphics("images/04-local-operations.png")
+```
+
+Innym dobrym przykładem operacji lokalnych jest klasyfikacja przedziałów wartości liczbowych do grup, takich jak grupowanie cyfrowego modelu wysokościowego na niskie (klasa 1), średnie (klasa 2) i wysokie wysokości (klasa 3).
+Korzystając z`classify()`polecenia  , musimy najpierw skonstruować macierz reklasyfikacji, gdzie pierwsza kolumna odpowiada dolnej granicy klasy, a druga kolumna górnej granicy klasy.
+Trzecia kolumna reprezentuje nową wartość dla określonych zakresów w kolumnach pierwszej i drugiej.
+
+```{r 04-spatial-operations-40}
+rcl = matrix(c(0, 12, 1, 12, 24, 2, 24, 36, 3), ncol = 3, byrow = TRUE)
+rcl
+```
+
+W tym przypadku przypisujemy wartości rastrowe w zakresach 0–12, 12–24 i 24–36, które są*przeklasyfikowane*odpowiednio do wartości 1, 2 i 3.
+
+```{r 04-spatial-operations-40b, eval=FALSE}
+recl = classify(elev, rcl = rcl)
+```
+
+Funkcja`classify()`tamoże być również wykorzystana, gdy chcemy zmniejszyć liczbę klas w naszych rasterach kategorycznych.W rozdziale @ref
+(location) przeprowadzimy kilka dodatkowych reklasyfikacji.
+
+Oprócz bezpośredniego stosowania operatorów arytmetycznych można również użyćfunkcji`app()``lapp()`,`tapp()`i.Są
+one bardziej wydajne, dlatego są preferowane w przypadku dużych zbiorów danych rastrowych.
+Dodatkowo umożliwiają one bezpośrednie zapisanie pliku wyjściowego.
+Funkcja`app()`  stosuje funkcję do każdej komórki rastra i służy do podsumowania (np. obliczenia sumy) wartości wielu warstw w jednej warstwie.
+`tapp()`jest rozszerzeniem funkcji`app()`, umożliwiającym wybór podzbioru warstw (patrzargument`index`),dla których chcemy wykonać określoną operację.
+Wreszciefunkcja`lapp()`  pozwala nam zastosować funkcję do każdej komórki,używając warstw jako argumentów — zastosowanie`lapp()`przedstawiono poniżej.
+
+Obliczenie znormalizowanego wskaźnika różnicy wegetacji (NDVI) jest dobrze znaną lokalną (piksel po pikselu) operacją rastrową.
+Zwraca rastrową z wartościami od -1 do 1; wartości dodatnie wskazują na obecność żywych roślin (głównie > 0,2).
+NDVI jest obliczany na podstawie pasm czerwonego i bliskiej podczerwieni (NIR) obrazów teledetekcyjnych, zazwyczaj pochodzących z systemów satelitarnych, takich jak Landsat lub Sentinel.
+Roślinność silnie pochłania światło w widmie światła widzialnego, a zwłaszcza w kanale czerwonym, jednocześnie odbijając światło NIR. Oto wzór na NDVI:
+
+$$
+\begin{split}
+NDVI&= \frac{\text{NIR} - \text{Red}}{\text{NIR} + \text{Red}}\
+\end{split}
+$$
+
+Obliczmy NDVI dla wielospektralnego pliku satelitarnego Parku Narodowego Zion.
+
+```{r}
+multi_raster_file = system.file("raster/landsat.tif", package = "spDataLarge")
+multi_rast = rast(multi_raster_file)
+```
+
+Nasz obiekt rastrowe ma cztery pasma satelitarne z satelity Landsat 8: niebieskie, zielone, czerwone i NIR.
+Co ważne, produkty Landsat poziomu 2 są przechowywane jako liczby całkowite, aby zaoszczędzić miejsce na dysku, dlatego przed wykonaniem jakichkolwiek obliczeń musimy je przekonwertować na liczby zmiennoprzecinkowe.
+ W tym celu musimy zastosować współczynnik skalowania (0,0000275) i dodać przesunięcie (-0,2) do wartości pierwotnych. [Więcej] ^ [informacji na ten temat można znaleźć na stronie https://www.usgs.gov/faqs/how-do-i-use-a-scale-factor-landsat-level-2-science-products.]
+
+```{r}
+multi_rast = (multi_rast * 0.0000275) - 0.2
+```
+
+Prawidłowe wartości powinny teraz mieścić się w zakresie od 0 do 1.Nie jest
+to jednak przypadek, prawdopodobnie ze względu na obecność chmur i innych efektów atmosferycznych, które są przechowywane jako wartości ujemne.
+Zastąpimy te wartości ujemne wartością 0 w następujący sposób.
+
+```{r}
+multi_rast[multi_rast < 0] = 0
+```
+
+Kolejnym krokiem powinno być zaimplementowanie formuły NDVI do funkcji R:
+
+```{r}
+ndvi_fun = function(nir, red){
+  (nir - red) / (nir + red)
+}
+```
+
+Funkcja ta przyjmuje dwa argumenty numeryczne,`nir`i`red`, i zwraca wektor numeryczny z wartościami NDVI.
+Może być używana jakoargument`fun`  `lapp()`.
+Musimy tylko pamiętać, że nasza funkcja oczekuje dwóch pasm (a nie czterech z oryginalnego rastra) i muszą one być w kolejności NIR, czerwony.
+Dlategoprzed wykonaniem jakichkolwiek obliczeń`multi_rast[[c(4, 3)]]`dzielimy rastr wejściowy na podzbiory za pomocą.
+
+```{r}
+ndvi_rast = lapp(multi_rast[[c(4, 3)]], fun = ndvi_fun)
+```
+
+Wynik, pokazany na prawym panelu na rysunku @ref(fig:04-ndvi), można porównać z obrazem RGB tego samego obszaru (lewy panel tego samego rysunku).
+Pozwala nam to zobaczyć, że największe wartości NDVI są związane z północnymi obszarami gęstego lasu, podczas gdy najniższe wartości są związane z jeziorem na północy i zaśnieżonymi grzbietami górskimi.
+
+Mapowanie
+
+```{r 04-ndvi, echo=FALSE, fig.cap="RGB image (left) and NDVI values (right) calculated for the example satellite file of Zion National Park"}
+knitr::include_graphics("images/04-ndvi.png")
+```
+
+predykcyjne jest kolejnym interesującym zastosowaniem lokalnych operacji rastrowych.
+Zmienna odpowiedziowa odpowiada zmierzonym lub zaobserwowanym punktom w przestrzeni, na przykład bogactwu gatunkowemu, występowaniu osuwisk, chorobom drzew lub plonom upraw.
+W rezultacie możemy łatwo pobrać zmienne predykcyjne dotyczące przestrzeni lub powietrza z różnych rastrów (wysokość, pH, opady, temperatura, pokrycie terenu, klasa gleby itp.).
+Następnie modelujemy naszą odpowiedź jako funkcję naszych predyktorów, używając`lm()`,`glm()`,`gam()`lub techniki uczenia maszynowego.
+Przestrzenne prognozy dotyczące obiektów rastrowych można zatem sporządzać poprzez zastosowanie oszacowanych współczynników do wartości rastrowych predyktorów i zsumowanie wartości rastrowych wynikowych (patrz rozdział @ref(eco)).
+
+### Operacje ogniskowe
+
+\\index{map algebra!focal operations}
+Podczas gdy funkcje lokalne działają na jednej komórce, choć mogą pochodzić z wielu warstw,operacje**ogniskowe**uwzględniają komórkę centralną (ogniskową) i jej sąsiadów.
+Rozważane sąsiedztwo (zwane również jądrem, filtrem lub ruchomym oknem) ma zazwyczaj rozmiar 3 na 3 komórki (czyli komórka centralna i osiem sąsiednich komórek), ale może mieć dowolny inny rozmiar lub kształt (niekoniecznie prostokątny) zdefiniowany przez użytkownika.
+Operacja ogniskowa stosuje funkcję agregacji do wszystkich komórek w określonym sąsiedztwie, wykorzystuje odpowiedni wynik jako nową wartość dla komórki centralnej i przechodzi do następnej komórki centralnej (rysunek @ref(fig:focal-example)).
+ Inne nazwy tej operacji to filtrowanie przestrzenne i splot [@burrough_principles_2015] .
+
+W języku R możemy użyćfunkcji`focal()`  do przeprowadzenia filtrowania przestrzennego.Kształt
+ruchomego okna definiujemy za pomocą`matrix`, którego wartości odpowiadają wagom (patrz`w`parametr w poniższym fragmencie kodu).
+Po drugie,`fun`parametr  pozwala nam określić funkcję,którą chcemy zastosować do tego sąsiedztwa.
+W tym przypadku wybieramy minimum, alemożna użyćdowolnej innej funkcji`var()`podsumowującej, w`sum()`tym`mean()`,  lub.
+
+`min()`
+
+```{r 04-spatial-operations-42, eval=FALSE}
+r_focal = focal(elev, w = matrix(1, nrow = 3, ncol = 3), fun = min)
+```
+
+Funkcja  ma dodatkowy argument, który określa, czy w trakcie procesu należy usunąć wartości NA (`na.rm = TRUE`) czy nie (`na.rm = FALSE`, domyślnie).
+
+```{r focal-example, echo=FALSE, fig.cap="Input raster (left) and resulting output raster (right) due to a focal operation, finding the minimum value in 3-by-3 moving windows.", fig.scap="Illustration of a focal operation."}
+knitr::include_graphics("images/04_focal_example.png")
+```
+
+Możemy szybko sprawdzić, czy wynik spełnia nasze oczekiwania.
+W naszym przykładzie minimalna wartość musi zawsze znajdować się w lewym górnym rogu ruchomego okna (pamiętaj, że utworzyliśmy rastrową wartość wejściową, zwiększając wartości komórek o jeden w każdym wierszu, zaczynając od lewego górnego rogu).
+W tym przykładzie macierz wag składa się wyłącznie z jedynek, co oznacza, że każda komórka ma taką samą wagę w wyniku, ale można to zmienić.
+
+Funkcje ogniskowe lub filtry odgrywają dominującą rolę w przetwarzaniu obrazów.
+Filtry dolnoprzepustowe lub wygładzające wykorzystują funkcję średniej do usuwania wartości skrajnych.
+W przypadku danych kategorycznych możemy zastąpić średnią modą, która jest najczęściej występującą wartością.
+Natomiast filtry górnoprzepustowe uwydatniają cechy.Przykładem mogą być tutaj
+filtry Laplace'a i Sobela do wykrywania linii.
+Sprawdźstronę`focal()`pomocy, aby dowiedzieć się, jak ich używać w R (zostaną one również wykorzystane w ćwiczeniach na końcu tego rozdziału).
+
+Przetwarzanie terenu, obliczanie cech topograficznych, takich jak nachylenie, ekspozycja i kierunki przepływu, opiera się na funkcjach ogniskowych.
+`terrain()`do obliczenia tych wskaźników, chociaż niektóre algorytmy terenowe, w tym metoda Zevenbergena i Thorne'a do obliczania nachylenia, nie są zaimplementowane w tejfunkcji**terra**.
+Wiele innych algorytmów — w tym krzywizny, obszary przyczyniające się i wskaźniki wilgotności — jest zaimplementowanych w oprogramowaniu open source do obsługi geograficznych systemów informacyjnych (GIS) na komputerach stacjonarnych.
+Rozdział @ref(gis) pokazuje, jak uzyskać dostęp do takich funkcji GIS z poziomu języka R.
+
+### Operacje strefowe
+
+\\index{map algebra!zonal operations}
+Podobnie jak operacje ogniskowe,operacje*strefowe*stosują funkcję agregacji do wielu komórek rastra.
+Jednakw przypadku operacji strefowychdrugi raster, zazwyczaj zawierający wartości kategoryczne, definiuje*filtry**strefowe*(lub „strefy”), w przeciwieństwie do okna sąsiedztwa w przypadku operacji ogniskowych przedstawionych w poprzedniej sekcji.
+W związku z tym komórki rastra definiujące filtr strefowy nie muszą być sąsiadami.Dobrym
+przykładem jest nasz raster o różnej wielkości ziaren, jak pokazano na prawym panelu rysunku @ref(fig:cont-raster): różne wielkości ziaren są rozmieszczone nierównomiernie w całym rasterze.
+Wynikiem operacji strefowej jest tabela podsumowująca pogrupowana według stref, dlatego operacja ta jest również znanaw świecie GISjako*statystyka strefowa*\\index{GIS}.
+Kontrastuje to z operacjami ogniskowymi,które domyślnie zwracają obiekt rastrowy.
+
+Poniższy fragment kodu wykorzystujefunkcję`zonal()`  do obliczenia średniej wysokości związanej z każdą klasą wielkości ziarna.
+
+```{r 04-spatial-operations-43}
+z = zonal(elev, grain, fun = "mean")
+z
+```
+
+Zwraca statystyki\\indeks{statistics}dla każdej kategorii, w tym przypadku średnią wysokość dla każdej klasy wielkości ziarna.
+Należy pamiętać, że możliwe jest również uzyskanie rastra z obliczonymi statystykami dla każdej strefy poprzez ustawienieargumentu`as.raster`na`TRUE`.
+
+### Operacje globalne i odległości
+
+Operacje*globalne*są szczególnym przypadkiem operacji strefowych, w których cały zbiór danych rastrowe stanowi pojedynczą strefę.
+Najczęstsze operacje globalne to statystyki opisowe\\indeks{statistics}dla całego zestawu danych rastrowych, takie jak minimum lub maksimum — omówiliśmy je już w sekcji @ref(summarizing-raster-objects).
+
+Poza tym operacje globalne są również przydatne do obliczania odległości i wag rastrów.
+W pierwszym przypadku można obliczyć odległość od każdej komórki do określonej komórki docelowej.
+Na przykład można obliczyć odległość do najbliższego wybrzeża (zobacz także`terra::distance()`).
+Możemy również wziąć pod uwagę topografię, na przykład aby uniknąć przekraczania pasm górskich w drodze do wybrzeża.
+Można to zrobić, ważąc odległość według wysokości, tak aby każdy dodatkowy metr wysokości „przedłużał” odległość euklidesową (w ćwiczeniach E8 i E9 na końcu tego rozdziału zrobisz dokładnie to).
+Obliczenia widoczności i widoczności również należą do rodziny operacji globalnych (w ćwiczeniach z rozdziału @ref(gis) obliczycie raster widoczności).
+
+### Odpowiedniki algebry map w przetwarzaniu wektorowym
+
+Wiele operacji algebry map ma swoje odpowiedniki w przetwarzaniu wektorowym [@liu_essential_2009] .
+Obliczanie rastra odległości (operacja globalna) przy uwzględnieniu tylko maksymalnej odległości (operacja ogniskowa logiczna) jest równoważne operacji bufora wektorowego (sekcja @ref(clipping)).
+Reklasyfikacja danych rastrowych (funkcja lokalna lub strefowa w zależności od danych wejściowych) jest równoważna rozpuszczaniu danych wektorowych (sekcja @ref(spatial-joining)).
+Nałożenie dwóch rastrów (operacja lokalna), z których jeden zawierawartości`NULL``NA`lubreprezentujące maskę, jest podobne do przycinania wektorowego (sekcja @ref(clipping)).
+Dość podobne do przycinania przestrzennego jest przecięcie dwóch warstw (sekcja @ref(spatial-subsetting)).
+Różnica polega na tym, że te dwie warstwy (wektorowa lub rastrowa) po prostu dzielą nakładający się obszar (przykład przedstawiono na rysunku @ref(fig:venn-clip)).Należy
+jednak uważać na sformułowania.
+Czasami te same słowa mają nieco inne znaczenie w modelach danych rastrowych i wektorowych.
+Podczas gdy agregowanie geometrii wielokątów oznacza rozpuszczenie granic, w przypadku geometrii danych rastrowych oznacza to zwiększenie rozmiarów komórek, a tym samym zmniejszenie rozdzielczości przestrzennej.
+Operacje strefowe powodują rozpuszczenie komórek jednego rastra zgodnie ze strefami (kategoriami) innego zestawu danych rastrowych przy użyciu funkcji agregującej.
+
+### Łączenie rastrów
+
+\\index{raster!merge}
+Załóżmy, że chcemy obliczyć NDVI (patrz sekcja @ref(local-operations)), a dodatkowo chcemy obliczyć atrybuty terenu na podstawie danych wysokościowych dla obserwacji w obszarze badań.Obliczenia
+takie opierają się na informacjach uzyskanych z teledetekcji.
+Odpowiednie obrazy są często podzielone na sceny obejmujące określony obszar przestrzenny, a obszar badań często obejmuje więcej niż jedną scenę.
+Wówczas musielibyśmy połączyć sceny obejmujące nasz obszar badań.
+W najprostszym przypadku możemy po prostu połączyć te sceny, czyli umieścić je obok siebie.Jest
+to możliwe na przykład w przypadku cyfrowych danych dotyczących wysokości.
+W poniższym fragmencie kodu najpierw pobieramy dane dotyczące wysokości z misji Shuttle Radar Topography Mission (SRTM) dla Austrii i Szwajcarii (kody krajów można znaleźć wfunkcji`country_codes()`**geodata**).
+W drugim kroku łączymy dwa rastrowe obrazy w jeden.
+
+```{r 04-spatial-operations-44, eval=FALSE}
+aut = geodata::elevation_30s(country = "AUT", path = tempdir())
+ch = geodata::elevation_30s(country = "CHE", path = tempdir())
+aut_ch = merge(aut, ch)
+```
+
+Polecenie`merge()`**terra**łączy dwa obrazy, a w przypadku ich nakładania się wykorzystuje wartość pierwszego rastra.
+
+Metoda łączenia jest mało przydatna
+
+,
+
+gdy nakładające się wartości nie odpowiadają sobie nawzajem.Często
+ma to miejsce w przypadku łączenia obrazów spektralnych ze scen, które zostały zarejestrowane w różnych terminach.
+`merge()`Polecenie nadal będzie działać, ale na wynikowym obrazie będzie widoczna wyraźna granica.
+Z drugiej stronypolecenie`mosaic()`  pozwala zdefiniować funkcję dla obszaru nakładania się.
+Na przykład możemy obliczyć wartość średnią — może to wygładzić wyraźną granicę w połączonym wyniku, ale najprawdopodobniej nie spowoduje jej zniknięcia.Bardziej
+szczegółowe wprowadzenie do teledetekcji za pomocą języka R można znaleźć w @wegmann\_remote\_2016.
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_04-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+

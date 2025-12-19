@@ -1,0 +1,347 @@
+---
+title: Geokomputacja z wykorzystaniem języka R
+author: Robin Lovelace, Jakub Nowosad, Jannes Muenchow
+date: '`r Sys.Date()`'
+site: bookdown::bookdown_site
+output: bookdown::bs4_book
+documentclass: krantz
+monofont: Source Code Pro
+monofontoptions: Scale=0.7
+bibliography:
+- geocompr.bib
+- packages.bib
+biblio-style: apalike
+link-citations: true
+colorlinks: true
+graphics: true
+description: Geocomputation with R jest przeznaczona dla osób, które chcą analizować,
+  wizualizować i modelować dane geograficzne za pomocą oprogramowania open source.
+  Opiera się ona na języku R, statystycznym języku programowania, który posiada potężne
+  możliwości przetwarzania danych, wizualizacji i geoprzestrzenne. Książka dostarcza
+  wiedzy i umiejętności niezbędnych do rozwiązania szerokiego zakresu problemów związanych
+  z danymi geograficznymi, w tym tych o znaczeniu naukowym, społecznym i środowiskowym.
+  Książka ta zainteresuje osoby z różnych środowisk, zwłaszcza użytkowników systemów
+  informacji geograficznej (GIS) zainteresowanych zastosowaniem swojej wiedzy specjalistycznej
+  w potężnym języku open source do analizy danych oraz użytkowników języka R zainteresowanych
+  poszerzeniem swoich umiejętności w zakresie obsługi danych przestrzennych.
+github-repo: geocompx/geocompr
+cover-image: images/cover2.png
+url: https://r.geocompx.org/
+---
+
+```{r index-1, echo=FALSE}
+is_on_ghactions = identical(Sys.getenv("GITHUB_ACTIONS"), "true")
+is_online = curl::has_internet()
+is_html = knitr::is_html_output()
+```
+
+```{r, echo=FALSE}
+# google scholar metadata
+library(metathis)
+if (is_html) {
+  meta() |>
+    meta_google_scholar(
+      title = "Geocomputation with R",
+      author = c("Robin Lovelace", "Jakub Nowosad", "Jannes Muenchow"),
+      publication_date = "2019",
+      isbn = "9780203730058"
+    )
+}
+```
+
+```{asis index-2, echo=is_html}
+# Welcome {-}
+
+This is the online home of *Geocomputation with R*, a book on geographic data analysis, visualization and modeling.
+
+<a href="https://www.routledge.com/9781032248882"><img src="images/cover2.png" width="250" height="375" alt="The geocompr ed2 book cover" align="right" style="margin: 0 1em 0 1em" /></a>
+
+**Note**: The second edition of the book has been published by CRC Press in the [R Series](https://www.routledge.com/Chapman--HallCRC-The-R-Series/book-series/CRCTHERSER).
+You can buy the book from [CRC Press](https://www.routledge.com/9781032248882), or [Amazon](https://www.amazon.com/Geocomputation-Chapman-Hall-Robin-Lovelace-dp-1032248882/dp/1032248882).
+
+<!-- **Note**: The first edition of the book has been published by CRC Press in the [R Series](https://www.routledge.com/Chapman--HallCRC-The-R-Series/book-series/CRCTHERSER).
+You can buy the book from [CRC Press](https://www.routledge.com/9781138304512), or [Amazon](https://www.amazon.com/Geocomputation-R-Robin-Lovelace-dp-0367670577/dp/0367670577/). -->
+
+The archived **First Edition** is hosted on [bookdown.org](https://bookdown.org/robinlovelace/geocompr/). 
+
+Inspired by the Free and Open Source Software for Geospatial ([FOSS4G](https://foss4g.org/)) movement, the code and prose underlying this book are open, ensuring that the content is reproducible, transparent, and accessible.
+Hosting the source code on [GitHub](https://github.com/geocompx/geocompr) allows anyone to interact with the project by opening issues or contributing new content and typo fixes for the benefit of everyone.
+
+[![](https://img.shields.io/github/stars/geocompx/geocompr?style=for-the-badge)](https://github.com/geocompx/geocompr)
+[![](https://img.shields.io/github/contributors/geocompx/geocompr?style=for-the-badge)](https://github.com/geocompx/geocompr/graphs/contributors)
+
+The online version of the book is hosted at [r.geocompx.org](https://r.geocompx.org) and kept up-to-date by [GitHub Actions](https://github.com/geocompx/geocompr/actions).
+Its current 'build status' as follows:
+
+[![Actions](https://github.com/geocompx/geocompr/workflows/Render/badge.svg)](https://github.com/geocompx/geocompr/actions)
+```
+
+```{r index-2-2, echo=FALSE, eval=is_html, results="asis"}
+if (is_on_ghactions){
+  cat(paste0("This version of the book was built on GH Actions on ", Sys.Date(), "."))
+} else {
+  cat(paste0("This version of the book was built on ", Sys.Date(), "."))
+}
+```
+
+```{asis index-2-3, echo=is_html}
+<a rel="license" href="http://creativecommons.org/licenses/by-nc-nd/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png"/></a><br/>This book is licensed to you under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-nd/4.0/">Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License</a>.
+
+<a rel="license" href="https://creativecommons.org/publicdomain/zero/1.0/"><img alt="Creative Commons License" style="border-width:0" src="https://licensebuttons.net/l/zero/1.0/88x31.png"/></a><br/>The code samples in this book are licensed under <a rel="license" href="https://creativecommons.org/publicdomain/zero/1.0/">Creative Commons CC0 1.0 Universal (CC0 1.0)</a>.
+
+## How to contribute? {-}
+
+**bookdown** makes editing a book as easy as editing a wiki, provided you have a GitHub account ([sign-up at github.com](https://github.com/join)).
+Once logged-in to GitHub, click on the 'Edit this page' icon in the right panel of the book website.
+This will take you to an editable version of the the source [R Markdown](https://rmarkdown.rstudio.com/) file that generated the page you're on.
+
+To raise an issue about the book's content (e.g., code not running) or make a feature request, check-out the [issue tracker](https://github.com/geocompx/geocompr/issues).
+
+Maintainers and contributors must follow this repository's [CODE OF CONDUCT](https://github.com/geocompx/geocompr/blob/main/CODE_OF_CONDUCT.md).
+
+## Reproducibility {-}
+
+The quickest way to reproduce the contents of the book if you're new to geographic data in R may be in the web browser, thanks to [Binder](https://mybinder.org/).
+Clicking on the link below should open a new window containing RStudio Server in your web browser, enabling you to open chapter files and running code chunks to test that the code is reproducible.
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/geocompx/geocompr/main?urlpath=rstudio)
+
+If you see something like the image below, congratulations, it worked!
+You can start exploring Geocomputation with R in a cloud-based environment, noting [mybinder.org user guidelines](https://mybinder.readthedocs.io/en/latest/about/user-guidelines.html)):
+```
+
+```{r index-2-4, echo=FALSE, fig.cap="Screenshot of reproducible code contained in Geocomputation with R running in RStudio Server on a browser served by Binder", eval=is_html}
+knitr::include_graphics("https://user-images.githubusercontent.com/1825120/134802314-6dd368c7-f5eb-4cd7-b8ff-428dfa93954c.png")
+```
+
+```{asis index-2-5, echo=is_html}
+To reproduce the code in the book on your own computer, you need a recent version of [R](https://cran.r-project.org/) and up-to-date packages.
+These can be installed using the [**remotes**](https://github.com/r-lib/remotes) package.
+```
+
+```{r index-3, message=FALSE, eval=FALSE, echo=is_html, results="hide"}
+install.packages("remotes")
+install.packages("geocompkg", 
+                 repos = c("https://geocompr.r-universe.dev",
+                           "https://cloud.r-project.org"), 
+                 dependencies = TRUE, force = TRUE)
+```
+
+```{asis index-3-1a, echo=is_html}
+After installing the book's dependencies, you can rebuild the book for testing and educational purposes.
+To do this [download](https://github.com/geocompx/geocompr/archive/refs/heads/main.zip) and unzip or [clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) the book's source code.
+After opening the `geocompr.Rproj` project in [RStudio](https://posit.co/download/rstudio-desktop/#download) (or opening the folder in another IDE such as [VS Code](https://github.com/REditorSupport/vscode-R)), you should be able to reproduce the contents with the following command:
+```
+
+```{r index-3-1, eval=FALSE, echo=is_html}
+bookdown::serve_book(".")
+```
+
+```{r index-3-2, echo=FALSE, include=FALSE}
+# is geocompkg installed?
+geocompkg_is_installed = "geocompkg" %in% installed.packages()
+if (!geocompkg_is_installed){
+  message(
+  'geocompkg not installed, run\nremotes::install_github("geocompx/geocompkg") # to install it'
+  )
+} 
+```
+
+```{asis index-23, echo=is_html}
+See the project's [GitHub repo](https://github.com/geocompx/geocompr#reproducing-the-book) for full details on reproducing the book.
+```
+
+```{asis index-22, echo=is_html}
+## Getting involved {-}
+
+If you find the project of use and interest, you can get involved in many ways, by:
+
+- Telling people about it
+- '[Starring](https://help.github.com/articles/about-stars/)' the [geocompr GitHub repository](https://github.com/geocompx/geocompr)
+- Communicating about the book online, via the [#geocompr hashtag](https://fosstodon.org/tags/geocompx) on Mastodon (see our [Guestbook at geocompx.org](https://geocompx.org/guestbook/)) or by letting us know of [courses](https://github.com/geocompx/geocompx.org/edit/main/guestbook.qmd) using the book
+- [Citing](https://github.com/geocompx/geocompr/raw/main/CITATION.bib) and [linking-to](https://r.geocompx.org) it
+- [Buying](https://www.amazon.com/Geocomputation-R-Robin-Lovelace-dp-0367670577/dp/0367670577) a copy
+- Reviewing it, on [Amazon](https://www.amazon.com/Geocomputation-Chapman-Hall-Robin-Lovelace/dp/1138304514/), [Goodreads](https://www.goodreads.com/book/show/42780859-geocomputation-with-r) or elsewhere
+- Asking questions about the content or making suggestion on [GitHub](https://github.com/geocompx/geocompr/issues), [Mastodon](https://fosstodon.org/tags/geocompx) or [Discord](https://discord.com/invite/PMztXYgNxp)
+- Answering questions, or at least responding to people asking for clarification or reproducible examples to demonstrate their question
+- Helping people get started with open source software for reproducible research in general, and working with geographic data in R in particular (this can be an excellent way to consolidate and build your own skills)
+- Supporting community translations
+  - The Spanish version: https://r.geocompx.org/es/
+  - The French version: https://r.geocompx.org/fr/
+  - The Japanese version: https://r.geocompx.org/jp/
+
+Further details can be found at [github.com/geocompx/geocompr](https://github.com/geocompx/geocompr#geocomputation-with-r).
+
+<hr>
+
+The globe icon used in this book was created by [Jean-Marc Viglino](https://github.com/Viglino) and is licensed under [CC-BY 4.0 International](https://github.com/Viglino/font-gis/blob/main/LICENSE-CC-BY.md).
+
+<a href="https://www.netlify.com"><img src="https://www.netlify.com/img/global/badges/netlify-color-accent.svg"/></a>
+The book website is hosted on [Netlify](https://www.netlify.com/).
+```
+
+```{asis index-5a, echo=!is_html}
+\newpage
+
+\vspace*{5cm}
+
+\thispagestyle{empty}
+
+\begin{center} \Large \emph{For Katy} \end{center}
+
+\vspace*{2cm}
+\begin{center} \Large \emph{Dla mojej rodziny} \end{center}
+
+\vspace*{2cm}
+\begin{center} \Large \emph{F{\"u}r meine Katharina und alle unsere Kinder  } \end{center}
+```
+
+```{asis index-22c, echo=is_html}
+# Foreword (1st Edition) {-}
+
+Doing 'spatial' in R has always been about being broad, seeking to provide and integrate tools from geography, geoinformatics, geocomputation and spatial statistics for anyone interested in joining in: joining in asking interesting questions, contributing fruitful research questions, and writing and improving code.
+That is, doing 'spatial' in R has always included open source code, open data and reproducibility.
+
+Doing 'spatial' in R has also sought to be open to interaction with many branches of applied spatial data analysis, and also to implement new advances in data representation and methods of analysis to expose them to cross-disciplinary scrutiny. 
+As this book demonstrates, there are often alternative workflows from similar data to similar results, and we may learn from comparisons with how others create and understand their workflows.
+This includes learning from similar communities around Open Source GIS and complementary languages such as Python, Java and so on.
+
+R's wide range of spatial capabilities would never have evolved without people willing to share what they were creating or adapting.
+This might include teaching materials, software, research practices (reproducible research, open data), and combinations of these. 
+R users have also benefitted greatly from 'upstream' open source geo libraries such as GDAL, GEOS and PROJ.
+
+This book is a clear example that, if you are curious and willing to join in, you can find things that need doing and that match your aptitudes.
+With advances in data representation and workflow alternatives, and ever increasing numbers of new users often without applied quantitative command line exposure, a book of this kind has really been needed.
+Despite the effort involved, the authors have supported each other in pressing forward to publication.
+
+So, this fresh book is ready to go; its authors have tried it out during many tutorials and workshops, so readers and instructors will be able to benefit from knowing that the contents have been and continue to be tried out on people like them.
+Engage with the authors and the wider R-spatial community, see value in having more choice in building your workflows and most important, enjoy applying what you learn here to things you care about.
+
+Roger Bivand
+
+Bergen, September 2018
+```
+
+# Przedmowa (wydanie drugie){-}
+
+Pisanie książek o oprogramowaniu open source do analizy danych, które nieustannie zmienia się w niekontrolowany sposób, jest odważnym przedsięwzięciem: przypomina to udział w wyścigu, w którym ktoś nieustannie przesuwa linię mety. Drugie wydanie książki*„Geocomputation with R”*pojawiło się w odpowiednim momencie: nie tylko uwzględnia wiele ostatnich zmian, ale także obejmuje nowe pakiety R i najnowsze osiągnięcia w dziedzinie informatyki. Zawiera teraz rozdział poświęcony interakcjom między rastrami a wektorami, w którym omówiono pakiet**terra**,który zastępuje pakiet**raster**do przetwarzania danych rastrowych (i wektorowych). Uwzględniono w nim równieżpakiet**tmap**do tworzenia wysokiej jakości map, który właśnie przechodzi pełny cykl przepisywania.
+
+Oprócz aktualizacji treści książki autorzy bardzo aktywnie pomagali w usprawnianiu i ukierunkowywaniu zmian w oprogramowaniu, przeprowadzając jego szeroko zakrojone testy, pomagając w jego ulepszaniu, pisząc zgłoszenia problemów i pull requesty na GitHubie, dzieląc się wynikami testów porównawczych oraz pomagając w ulepszaniu dokumentacji oprogramowania.
+
+Pierwsze wydanie tej książki odniosło ogromny sukces. Była to pierwsza książka popularyzująca analizę przestrzenną za pomocąpakietu**sf**i**tidyverse**. Jej entuzjastyczny ton dotarł do szerokiego grona odbiorców i pomógł osobom o różnym poziomie doświadczenia w rozwiązywaniu nowych problemów i przejściu na wyższy poziom.  Dostępność całkowicie bezpłatna online, oprócz wersji drukowanej, zapewniła jej duży zasięg i umożliwiła użytkownikom wypróbowanie przedstawionej metodologii na własnych zestawach danych. Ponadto autorzy zachęcali czytelników do kontaktu za pośrednictwem zgłoszeń na GitHubie, postów w mediach społecznościowych i dyskusji na kanale Discord. Doprowadziło to do tego, że 75 osób w ten czy inny sposób przyczyniło się do powstania kodu źródłowego książki, w tym kilka osób, które napisały dłuższe recenzje lub stworzyły całe sekcje, m.in. na temat zoptymalizowanych pod kątem chmury plików GeoTIFF, STAC i openEO;pakietu**sfheaders**; interfejsów API OGC i metadanych; orazaplikacji`CycleHire`shiny na Discordzie. Doprowadziło to do ożywionych i spontanicznych dyskusji w wątkach obejmujących tematy od wysoce technicznych po „zobacz, co stworzyłem”.
+
+Ponadto autorzy zainicjowali wydanie tomu towarzyszącego*Geocomputation with Python*, podkreślając,że geocomputation odbywa się za pomocą języków nauki o danych i nie jest w żadnym wypadku ograniczone do jednego z nich. Geocomputation zyskuje na popularności, a pisanie książek takich jak ta jest niezbędne w ramach wspierania rozwijającej się społeczności geocomputation.
+
+Edzer Pebesma
+
+Münster, Niemcy, maj 2024 r.
+
+# Przedmowa{-}
+
+## Dla kogo jest ta książka{-}
+
+Książka ta jest przeznaczona dla osób, które chcą analizować, wizualizować i modelować dane geograficzne za pomocą oprogramowania open source.Opiera
+się ona na języku R, statystycznym języku programowania, który posiada potężne możliwości przetwarzania danych, wizualizacji i geoprzestrzenne.
+Książka obejmuje szeroki zakres tematów i będzie interesująca dla wielu osób z różnych środowisk, a w szczególności dla:
+
+- Osoby, które nauczyły się analizy przestrzennej przy użyciu komputerowego systemu informacji geograficznej (GIS), takiego jak[QGIS](https://qgis.org/en/site/),[ArcGIS](http://desktop.arcgis.com/en/arcmap/),[GRASS GIS](https://grass.osgeo.org/)lub[SAGA](https://saga-gis.sourceforge.io/en/index.html) , i które chcą uzyskać dostęp do potężnego języka programowania (geo)statystycznego i wizualizacyjnego oraz skorzystać z zalet podejścia opartego na wierszu poleceń [@sherman_desktop_2008]:
+  
+  > Wraz z pojawieniem się „nowoczesnego” oprogramowania GIS większość ludzi chce kierować się w życiu metodą „wskaż i kliknij”. To dobrze, ale wiersz poleceń oferuje ogromną elastyczność i możliwości.
+
+- Absolwenci i naukowcy z dziedzin specjalizujących się w danych geograficznych, w tym geografii, teledetekcji, planowaniu, GIS i naukach o danych przestrzennych
+
+- Pracownicy naukowi i studenci studiów podyplomowych zajmujący się danymi geograficznymi — w dziedzinach takich jak geologia, nauki regionalne, biologia i ekologia, nauki rolnicze, archeologia, epidemiologia, modelowanie transportu i szeroko rozumiana nauka o danych — którzy potrzebują mocy i elastyczności języka R do swoich badań
+
+- Badacze stosowani i analitycy w organizacjach publicznych, prywatnych lub trzeciego sektora, którzy potrzebują powtarzalności, szybkości i elastyczności języka wiersza poleceń, takiego jak R, w aplikacjach zajmujących się danymi przestrzennymi tak różnorodnymi, jak planowanie urbanistyczne i transportowe, logistyka, geomarketing (analiza lokalizacji sklepów) i planowanie awaryjne
+
+Książka jest przeznaczona dla średnio zaawansowanych i zaawansowanych użytkowników języka R zainteresowanych geokomputacją oraz dla początkujących użytkowników języka R, którzy mają wcześniejsze doświadczenie z danymi geograficznymi.
+Jeśli jesteś nowicjuszem zarówno w zakresie języka R, jak i danych geograficznych, nie zniechęcaj się: w rozdziale @ref(spatial-class) oraz w linkach podanych poniżej zamieszczamy odnośniki do dodatkowych materiałów i opisujemy charakter danych przestrzennych z perspektywy początkującego użytkownika.
+
+## Jak czytać tę książkę{-}
+
+Książka podzielona jest na trzy części:
+
+1. Część I: Podstawy, mająca na celu zapoznanie Cię z danymi geograficznymi w języku R.
+2. Część II: Zaawansowane techniki, w tym wizualizacja danych przestrzennych, połączenia z oprogramowaniem GIS, programowanie z wykorzystaniem danych przestrzennych i uczenie statystyczne.
+3. Część III: Zastosowania w rzeczywistych problemach, w tym transport, geomarketing i modelowanie ekologiczne.
+
+Rozdziały stają się coraz trudniejsze.
+Zalecamy przeczytanie wszystkich rozdziałów w części I przed przystąpieniem do bardziej zaawansowanych tematów w części II i III.
+Rozdziały w części II i III warto przeczytać w kolejności, ale można je też czytać osobno, jeśli interesuje Cię konkretny temat.Dużą
+przeszkodą w analizie geograficznej w R jest trudna nauka.
+Rozdziały w części I mają to zmienić, bo zawierają kod, który można powtórzyć na prostych zestawach danych, co powinno ułatwić rozpoczęcie pracy.
+
+Ważnym aspektem książki z punktu widzenia nauczania/uczenia się są**ćwiczenia**na końcu każdego rozdziału.Ich
+wykonanie pozwoli rozwinąć umiejętności i da pewność siebie potrzebną do rozwiązania szeregu problemów geoprzestrzennych.
+Rozwiązania ćwiczeń można znaleźć w internetowej broszurze towarzyszącej książce „Geocomputation with R”, dostępnej pod adresem[r.geocompx.org/solutions](https://r.geocompx.org/solutions).
+Aby dowiedzieć się, jak powstała ta broszura i jak aktualizować rozwiązania w plikach takich jak[\_01-ex.Rmd](https://github.com/geocompx/geocompr/blob/main/_01-ex.Rmd), zapoznaj się z naszym wpisem na blogu poświęconym[rozwiązaniom Geocomputation with R](https://geocompx.org/post/2022/geocompr-solutions/).
+Więcej wpisów na blogu i przykładów można znaleźć na stronie[geocompx.org](https://geocompx.org).
+
+Niecierpliwi czytelnicy mogą od razu przejść do praktycznych przykładów, zaczynając od rozdziału @ref(spatial-class).
+Zalecamy jednaknajpierwzapoznać się z szerszym kontekstem*Geocomputation with R*w rozdziale @ref(intro).
+Jeśli nie znasz języka R, zalecamy również zapoznanie się z nim przed przystąpieniem do wykonywania fragmentów kodu zamieszczonych w każdym rozdziale (chyba że czytasz książkę w celu zrozumienia pojęć).
+Na szczęście dla początkujących, R ma wspierającą społeczność, która opracowała bogate zasoby, które mogą pomóc.
+Szczególnie polecamy trzy samouczki:  [R dla nauki o danych](https://r4ds.had.co.nz/)
+      \[@grolemund\_r\_2016\]
+    [Efektywne programowanie w](https://csgillespie.github.io/efficientR/)
+      \[@gillespie\_efficient\_2016\]
+    [R](https://csgillespie.github.io/efficientR/) oraz[Wprowadzenie do R](http://colinfay.me/intro-to-r/) [@rcoreteam_introduction_2021] .
+
+## Dlaczego R?{-}
+
+Chociaż R ma stromą krzywą uczenia się, podejście oparte na wierszu poleceń, które promujemy w tej książce, może szybko się opłacić.
+Jak dowiesz się w kolejnych rozdziałach, R jest skutecznym narzędziem do radzenia sobie z szerokim zakresem wyzwań związanych z danymi geograficznymi.
+Oczekujemy, że dzięki praktyce R stanie się programem z wyboru w Twoim zestawie narzędzi geoprzestrzennych do wielu zastosowań.W wielu
+przypadkach wpisywanie i wykonywanie poleceń w wierszu poleceń jest szybsze niż wskazywanie i klikanie w graficznym interfejsie użytkownika (GUI) komputerowego systemu GIS.
+W przypadku niektórych zastosowań,takich jak statystyka przestrzenna i modelowanie, R może być*jedynym*realistycznym sposobem wykonania zadania.
+
+Jak opisano w sekcji @ref(why-use-r-for-geocomputation), istnieje wiele powodów, dla których warto używać języka R do obliczeń geograficznych:W porównaniu z innymi
+językami, R dobrze nadaje się do interaktywnego wykorzystania wymaganego w wielu procesach analizy danych geograficznych.
+R wyróżnia się w szybko rozwijających się dziedzinach nauki o danych (obejmujących obróbkę danych, techniki uczenia statystycznego i wizualizację danych) oraz dużych zbiorów danych (dzięki wydajnym interfejsom do baz danych i rozproszonych systemów obliczeniowych).
+Ponadto R umożliwia odtwarzalny przepływ pracy: udostępnienie skryptów leżących u podstaw analizy pozwoli innym na wykorzystanie wyników Twojej pracy.
+Aby zapewnić powtarzalność w tej książce, udostępniliśmy jej kod źródłowy na stronie[github.com/geocompx/geocompr](https://github.com/geocompx/geocompr#geocomputation-with-r).
+Znajdziesz tam pliki skryptów wfolderze`code/`,które generują rysunki:
+gdy kod generujący rysunek nie jest podany w głównym tekście książki, nazwa pliku skryptu, który go wygenerował, jest podana w podpisie (zobacz na przykład podpis do rysunku @ref(fig:zones)).
+
+Do geokomputacji można używać innych języków, takich jak Python, Java i C++.
+Istnieją doskonałe zasoby do nauki geokomputacji*bez użycia języka R*, jak omówiono w sekcji @ref(software-for-geocomputation).
+Żadne z nich nie zapewnia jednak unikalnego połączenia ekosystemu pakietów, możliwości statystycznych i opcji wizualizacji oferowanych przez społeczność R.
+Ponadto, ucząc dogłębnego korzystania z jednego języka (R), niniejsza książka wyposaża czytelnika w koncepcje i pewność siebie potrzebne do wykonywania geokomputacji w innych językach.
+
+## Wpływ na rzeczywistość{-}
+
+*Geocomputation with R*wyposaża czytelnika w wiedzę i umiejętności potrzebne do rozwiązywania szerokiego zakresu problemów, w tym problemów o znaczeniu naukowym, społecznym i środowiskowym, które znajdują odzwierciedlenie w danych geograficznych.
+Jak opisano w sekcji @ref(what-is-geocomputation), geocomputation to nie tylko wykorzystanie komputerów do przetwarzania danych geograficznych, ale także wpływ na rzeczywisty świat.Szerszy kontekst i
+motywacje leżące u podstaw tej książki zostały omówione w rozdziale @ref(intro).
+
+## Podziękowania{-}
+
+```{r contrib-preface, include=FALSE}
+contributors = readr::read_csv("extdata/contributors.csv")
+c_txt = contributors$name
+c_url = contributors$link
+c_rmd = paste0("[", c_txt, "](", c_url, ")")
+contributors_text = paste0(paste0(c_txt[-length(c_txt)], collapse = ", "), ", and ", c_txt[length(c_txt)])
+```
+
+Serdecznie dziękujemy wszystkim, którzy przyczynili się bezpośrednio lub pośrednio poprzez serwis GitHub służący do hostingu kodu i współpracy, w tym następującym osobom, które wniosły bezpośredni wkład poprzez pull requesty:`r contributors_text`.
+Dziękujemy Marco Sciainiemu, który stworzył okładkę pierwszego wydania, oraz Benjaminowi Nowakowi, który stworzył okładkę drugiego wydania.
+Zobacz`code/frontcover.R`i`code/frontcover2.R`, aby uzyskać kod umożliwiający odtworzenie tych wizualizacji.
+Kilkudziesięciu innych osób wniosło swój wkład online, zgłaszając i komentując problemy oraz przekazując opinie za pośrednictwem mediów społecznościowych.
+Hashtagi`#geocompr``geocompx`ibędą nadal żywe!
+
+Chcielibyśmy podziękować Johnowi Kimmelowi i Larze Spieker z CRC Press oraz Taylor \& Francis za przeniesienie naszych pomysłów z wczesnego etapu planowania książki do produkcji poprzez cztery rundy recenzji dla każdego wydania.
+Recenzenci zasługują na szczególne wyróżnienie za swoje szczegółowe opinie i wiedzę fachową, które znacznie poprawiły strukturę i treść książki.
+
+Dziękujemy Patrickowi Schratzowi i Alexandrowi Brenningowi z Uniwersytetu w Jenie za owocne dyskusje i wkład w rozdziały @ref(spatial-cv) i @ref(eco).
+Dziękujemy Emmanuelowi Blondelowi z Organizacji Narodów Zjednoczonych ds. Wyżywienia i Rolnictwa za fachowy wkład w sekcję poświęconą usługom internetowym;
+Michaelowi Sumnerowi za krytyczny wkład w wiele obszarów książki, zwłaszcza w dyskusję na temat algorytmów w rozdziale 11;
+Timowi Appelhansowi, Davidowi Cooleyowi i Kiranmayi Vadlamudi za kluczowy wkład w rozdział poświęcony wizualizacji (rozdział 9);
+Mariusowi Appelowi za wkład w rozdział 10;
+oraz Katy Gregg, która zredagowała każdy rozdział i znacznie poprawiła czytelność książki.
+
+Można by wymienić niezliczoną liczbę innych osób, które wniosły swój wkład na wiele różnych sposobów.
+Ostatnie podziękowania kieruję do wszystkich programistów,którzy umożliwili geokomputację za pomocą języka R.
+W szczególności Edzer Pebesma (twórcapakietu**sf**), Robert Hijmans (twórca**terra**) i Roger Bivand (który położył podwaliny pod wiele programów przestrzennych języka R),którzy umożliwili wysokowydajne obliczenia geograficzne w języku R.
+
+
