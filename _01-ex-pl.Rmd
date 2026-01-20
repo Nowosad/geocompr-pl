@@ -1,0 +1,11 @@
+E1. Zastanów się nad terminami „GIS”\\index{GIS}, „GDS” i „geocomputation” opisanymi powyżej. Który z nich (jeśli w ogóle) najlepiej opisuje pracę, którą chciałbyś wykonywać przy użyciu metod i oprogramowania geo\*, i dlaczego?
+
+E2. Podaj trzy powody, dla których warto używać języka skryptowego, takiego jak R, do geocomputation zamiast oprogramowania GIS opartego na graficznym interfejsie użytkownika (GUI), takiego jak QGIS\\index{QGIS}.
+
+E3. W 2000 roku Stan Openshaw napisał, że geocomputation obejmuje „praktyczną pracę, która jest korzystna lub użyteczna” dla innych. Pomyśl o praktycznym problemie i możliwych rozwiązaniach, które mogłyby zostać opracowane na podstawie nowych dowodów uzyskanych z analizy, wizualizacji lub modelowania danych geograficznych. Za pomocą długopisu i papieru (lub odpowiednika komputerowego) naszkicuj dane wejściowe i możliwe wyniki ilustrujące, w jaki sposób geocomputation może pomóc.
+
+<!--toDo: rl -->
+
+<!--dodaj rozwiązania!-->
+
+

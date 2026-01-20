@@ -1,0 +1,852 @@
+# (CZĘŚĆ) Aplikacje{.unnumbered}
+
+# Transport{#transport}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+```{r transport-setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+## Wymagania wstępne{.unnumbered}
+
+- W niniejszym rozdziale wykorzystano następujące pakiety: [^13-transport-1]
+
+
+      \[^13-transport-1\]:
+    Należy również zainstalować pakiet**nabor**, chociaż nie trzeba go dołączać.
+
+```{r 13-transport-1, message=FALSE, results="hide"}
+library(sf)
+library(dplyr)
+library(spDataLarge)
+library(stplanr)      # for processing geographic transport data
+library(tmap)         # map-making (see Chapter 9)
+library(ggplot2)      # data visualization package
+library(sfnetworks)   # spatial network classes and functions 
+```
+
+## Wprowadzenie
+
+W niewielu innych sektorach przestrzeń geograficzna jest bardziej namacalna niż w transporcie.
+ Wysiłek związany z przemieszczaniem się (pokonywaniem odległości) ma kluczowe znaczenie dla „pierwszego prawa” geografii, zdefiniowanego przez Waldo Toblera w 1970 r. w następujący sposób [@tobler_computer_1970]:
+
+> Wszystko jest ze sobą powiązane, ale rzeczy bliskie są bardziej powiązane niż rzeczy odległe.
+
+To „prawo” stanowi podstawę autokorelacji przestrzennej\\indeksu{autocorrelation!spatial}i innych kluczowych pojęć geograficznych.Ma
+ono zastosowanie do tak różnorodnych zjawisk, jak sieci przyjaźni i różnorodność ekologiczna, i można je wyjaśnić kosztami transportu – w kategoriach czasu, energii i pieniędzy – które stanowią „tarcie odległości”.
+ Z tej perspektywy technologie transportowe mają charakter przełomowy, zmieniając relacje przestrzenne między podmiotami geograficznymi, w tym przemieszczającymi się ludźmi i towarami: „celem transportu jest pokonanie przestrzeni” [@rodrigue_geography_2013] .
+
+Transport jest z natury działalnością przestrzenną, polegającą na przemieszczaniu się z punktu początkowego „A” do punktu docelowego „B” poprzez nieskończoną liczbę lokalizacji pomiędzy nimi.
+ Nie jest zatem zaskakujące, że badacze transportu od dawna sięgają po metody geograficzne i obliczeniowe, aby zrozumieć wzorce przemieszczania się oraz sposób, w jaki interwencje mogą poprawić ich wydajność [@lovelace_open_2021] .
+
+W niniejszym rozdziale przedstawiono analizę geograficzną systemów transportowych na różnych poziomach geograficznych:
+
+- **Jednostki obszarowe**\\index{areal units}: wzorce transportowe można zrozumieć w odniesieniu do agregatów strefowych, takich jak główny środek transportu (na przykład samochód, rower lub pieszo) oraz średnia odległość podróży osób mieszkających w danej strefie, omówiona w sekcji @ref(transport-zones)
+- **Linie pożądane**\\index{desire lines}: linie proste reprezentujące dane „punkt początkowy-punkt docelowy”, które rejestrują, ile osób podróżuje (lub mogłoby podróżować) między miejscami (punktami lub strefami) w przestrzeni geograficznej, temat omówiony w sekcji @ref(desire-lines)
+- **Węzły**\\index{node}: są to punkty w systemie transportowym, które mogą reprezentować typowe miejsca początkowe i docelowe oraz stacje transportu publicznego, takie jak przystanki autobusowe i stacje kolejowe, temat omówiony w sekcji @ref(nodes)
+- **Trasy**\\index{routes}: są to linie reprezentujące ścieżkę wzdłuż sieci tras wzdłuż linii pożądanych i między węzłami.
+  Trasy (które mogą być reprezentowane jako pojedyncze ciągi linii lub wiele krótkich*segmentów*) oraz*silniki**trasowania*, które je generują, są omówione w sekcji @ref(routes)
+- **Sieci tras**\\index{network}: reprezentują one system dróg, ścieżek i innych elementów liniowych na danym obszarze i są omówione w sekcji @ref(route-networks).
+   Mogą być reprezentowane jako elementy geograficzne (zazwyczaj krótkie odcinki dróg, które składają się na pełną sieć) lub zorganizowane jako połączony wykres, przy czym poziom ruchu na różnych odcinkach jest określany przez modelarzy transportu jako „przepływ” [@hollander_transport_2016]
+
+Kolejnym kluczowym poziomem są**agenci**, czyli podmioty mobilne, takie jak my sami, oraz pojazdy, które umożliwiają nam przemieszczanie się, np. rowery i autobusy.
+Można je przedstawić komputerowo w oprogramowaniu takim jak[MATSim](http://www.matsim.org/)i[A/B Street](https://github.com/a-b-street/abstreet), które odzwierciedlają dynamikę systemów transportowych przy użyciu modelu opartego na agentach (ABM) \\index{agent-based modeling} , zazwyczaj przy wysokim poziomie rozdzielczości przestrzennej i czasowej [@horni_multi-agent_2016] .
+ ABM to potężne podejście do badań nad transportem, które ma duży potencjał integracji z klasami przestrzennymi R [@thiele_r_2014;@lovelace_spatial_2016] , ale wykracza poza zakres niniejszego rozdziału.
+Poza poziomami geograficznymi i agentami podstawową jednostką analizy w wielu modelach transportowych jest**podróż** , czyli pojedyncza podróż z punktu początkowego „A” do punktu docelowego „B” [@hollander_transport_2016] .
+Podróże łączą różne poziomy systemów transportowych i można je przedstawić w uproszczony sposób jako geograficzne*linie pożądane*łączącecentroidy*stref*\\index{centroid}(*węzły*) lub jako trasy zgodne z*siecią tras*transportowych.
+W tym kontekście*agenci*\\index{agent-based modeling}są zazwyczaj punktowymi jednostkami,które poruszają się w ramach sieci transportowej.
+
+Systemy transportowe są dynamiczne [@xie_evolving_2011] .
+Chociaż niniejszy rozdział koncentruje się naanalizie*geograficznej*systemów transportowych, w sekcji @ref(prioritizing-new-infrastructure) przedstawiono spostrzeżenia dotyczące sposobu wykorzystania tego podejścia do symulacji scenariuszy zmian.
+Cel modelowania geograficznego transportu można interpretować jako uproszczenie złożoności tych systemów czasoprzestrzennych w sposób pozwalający uchwycić ich istotę.
+ Wybór odpowiednich poziomów analizy geograficznej może pomóc w uproszczeniu tej złożoności bez utraty jej najważniejszych cech i zmiennych, umożliwiając lepsze podejmowanie decyzji i skuteczniejsze interwencje [@hollander_transport_2016] .
+
+Zazwyczaj modele są projektowane w celu rozwiązania konkretnego problemu, takiego jak poprawa bezpieczeństwa lub efektywności środowiskowej systemów transportowych.
+Z tego powodu niniejszy rozdział opiera się na scenariuszu politycznym, przedstawionym w następnej sekcji, który zadaje pytanie: jak zwiększyć popularność jazdy na rowerze w mieście Bristol?
+Rozdział @ref(location) przedstawia powiązane zastosowanie geokomputacji: ustalanie priorytetów lokalizacji nowych sklepów rowerowych.
+Istnieje związek między tymi rozdziałami: nowa i efektywnie zlokalizowana infrastruktura rowerowa może zachęcić ludzi do jazdy na rowerze, zwiększając popyt na sklepy rowerowe i lokalną aktywność gospodarczą.
+Podkreśla to ważną cechę systemów transportowych: są one ściśle powiązane z szerszymi zjawiskami i wzorcami zagospodarowania terenu.
+
+## Studium przypadku Bristolu{#bris-case}
+
+Studium przypadku wykorzystane w tym rozdziale dotyczy miasta Bristol, położonego w zachodniej Anglii, około 30 km na wschód od stolicy Walii, Cardiff.
+Przegląd sieci transportowej regionu przedstawiono na rysunku @ref(fig:bristol), który pokazuje różnorodność infrastruktury transportowej dla rowerów, transportu publicznego i prywatnych pojazdów silnikowych.
+
+```{r 13-transport-2, echo=FALSE, eval=FALSE}
+# code that generated the input data - see also ?bristol_ways
+# source("https://github.com/geocompx/geocompr/raw/main/code/13-transport-data-gen.R") 
+# view input data
+# summary(bristol_ways)
+# summary(bristol_ttwa)
+# summary(bristol_region)
+library(tmap)
+region_all = rbind(bristol_region, bristol_ttwa)
+tmap_mode("view")
+tm_shape(region_all[1, ], bbox = region_all) +
+  tm_fill("yellow", col_alpha = 0.5) +
+  tm_shape(bristol_ways) +
+  tm_lines(col = "highway", lwd = 2.1, col.scale = tm_scale(values = "-Set1")) +
+  tm_scalebar() +
+  tm_shape(region_all) +
+  tm_borders(col = "black") +
+  tm_basemap(server = leaflet::providers$Esri.WorldTopoMap)
+```
+
+```{r bristol, echo=FALSE, fig.cap="Bristol's transport network represented by colored lines for active (green), public (railways, blue) and private motor (red) modes of travel. Black border lines represent the inner city boundary (highlighted in yellow) and the larger Travel To Work Area (TTWA).", fig.scap="Bristol's transport network."}
+knitr::include_graphics("images/13_bristol.png")
+```
+
+Bristol jest dziesiątym co do wielkości miastem w Anglii, z populacją pół miliona mieszkańców, chociaż jego obszar oddziaływania komunikacyjnego\\index{catchment area}jest większy (patrz sekcja @ref(transport-zones)).
+Miasto ma prężną gospodarkę, w której działają przedsiębiorstwa z branży lotniczej, mediów, usług finansowych i turystyki, a także dwie duże uczelnie.
+ Bristol charakteryzuje się wysokim średnim dochodem na osobę, ale posiada również obszary dotknięte poważnym ubóstwem [@bristol_city_council_deprivation_2015] .
+
+Pod względem transportu Bristol jest dobrze obsługiwany przez połączenia kolejowe i drogowe, a poziom aktywności fizycznej jest tu stosunkowo wysoki.
+Według badania[Active People Survey](https://www.gov.uk/government/statistical-data-sets/how-often-and-time-spent-walking-and-cycling-at-local-authority-level-cw010#table-cw0103)19% mieszkańców jeździ na rowerze, a 88% chodzi pieszo co najmniej raz w miesiącu (średnia krajowa wynosi odpowiednio 15% i 81%).W spisie
+powszechnym z 2011 r. 8% mieszkańców stwierdziło, że dojeżdża do pracy na rowerze, w porównaniu z zaledwie 3% w skali kraju.
+
+```{r 13-transport-3, eval=FALSE, echo=FALSE}
+if (!require(readODS)) {
+  install.packages("readODS")
+}
+u = "https://www.gov.uk/government/uploads/system/uploads/attachment_data/file/536823/local-area-walking-and-cycling-in-england-2015.zip"
+download.file(u, "local-area-walking-and-cycling-in-england-2015.zip")
+unzip("local-area-walking-and-cycling-in-england-2015.zip")
+View(readODS::read_ods("Table index.ods"))
+cw0103 = readODS::read_ods("cw0103.ods")
+View(cw0103)
+```
+
+Podobnie jak wiele innych miast, Bristol boryka się z poważnymi problemami związanymi z zatłoczeniem, jakością powietrza i brakiem aktywności fizycznej.
+Jazda na rowerze może skutecznie rozwiązać wszystkie te problemy: ma większy potencjał zastąpienia podróży samochodem niż chodzenie pieszo, ponieważ typowa[prędkość](https://en.wikipedia.org/wiki/Bicycle_performance)jazdy na rowerze wynosi 15–20 km/h, podczas gdy chodzenie pieszo to 4–6 km/h.
+Z tego powodu[strategia transportowa](https://www.bristol.gov.uk/council-and-mayor/policies-plans-and-strategies/bristol-transport-strategy)Bristoluzawiera ambitne plany dotyczące jazdy na rowerze.
+
+Aby podkreślić znaczenie kwestii politycznych w badaniach nad transportem, niniejszy rozdział skupia się na potrzebie dostarczenia dowodów osobom (planistom transportu, politykom i innym zainteresowanym stronom), których zadaniem jest zachęcenie ludzi do rezygnacji z samochodów na rzecz bardziej zrównoważonych środków transportu, w szczególności chodzenia pieszo i jazdy na rowerze.
+Szerszym celem jest pokazanie, w jaki sposób geokomputacja może wspierać planowanie transportu oparte na dowodach.
+W tym rozdziale dowiesz się, jak:
+
+- Opisać geograficzne wzorce zachowań transportowych w miastach
+- Zidentyfikować kluczowe węzły transportu publicznego obsługujące podróże multimodalne
+- Przeanalizować „linie pożądane” podróży, aby znaleźć miejsca, w których wiele osób pokonuje krótkie odległości samochodem
+- Zidentyfikować lokalizacje tras rowerowych, które zachęcą do rzadszego korzystania z samochodów i częstszego korzystania z rowerów
+
+Aby rozpocząć praktyczną część tego rozdziału, w następnej sekcji zaczniemy od załadowania danych strefowych dotyczących wzorców podróży.
+Te zestawy danych na poziomie stref są niewielkie, ale często mają kluczowe znaczenie dla uzyskania podstawowej wiedzy na temat ogólnego systemu transportowego danej miejscowości.
+
+## Strefy transportowe
+
+Chociaż systemy transportowe opierają się przede wszystkim na elementach liniowych i węzłach — w tym trasach i stacjach — często sensowne jest rozpoczęcie od danych obszarowych, aby podzielić ciągłą przestrzeń na namacalne jednostki [@hollander_transport_2016] .
+Oprócz granicy wyznaczającej obszar badań (w tym przypadku Bristol), dla badaczy transportu szczególnie interesujące są dwa rodzaje stref: strefy początkowe i docelowe.
+Często te same jednostki geograficzne są używane dla miejsc początkowych i docelowych.
+Jednak różne systemy podziału na strefy, takie jak „strefy[miejsc pracy](https://www.data.gov.uk/dataset/022e455a-b5cc-4247-bfc5-1aaf9da78379/workplace-zones-a-new-geography-for-workplace-statistics) ”, mogą być odpowiednie do przedstawienia zwiększonej gęstości miejsc docelowych podróży w obszarach z wieloma „atrakcjami turystycznymi”, takimi jak szkoły i sklepy [@office_for_national_statistics_workplace_2014] .
+
+Najprostszym sposobem zdefiniowania obszaru badań jest często pierwsza pasująca granica zwrócona przez OpenStreetMap\\index{OpenStreetMap}.
+Można to zrobić za pomocą polecenia takiego jak`osmdata::getbb("Bristol", format_out = "sf_polygon",  limit = 1)`.Zwraca
+onoobiekt`sf`(lub listęobiektów`sf` ,jeśli nie określono`limit = 1` ) reprezentujący granice największego pasującego obszaru miejskiego, albo prostokątny wielokąt obwiedni, albo szczegółową granicę wielokątną. [^13-transport-2]
+W przypadku Bristolu zwracany jest szczegółowy wielokąt, reprezentowany przezobiekt`bristol_region`wpakiecie**spDataLarge**.
+Zobacz wewnętrzną niebieską granicę na rysunku @ref(fig:bristol): podejście to ma kilka wad:
+
+[^13-transport-2]: W przypadkach, gdy pierwsze dopasowanie nie zapewnia prawidłowej nazwy, należy określić kraj lub region, na przykład`Bristol Tennessee`dla Bristolu położonego w Ameryce.
+
+- Pierwsza granica zwrócona przez OSM może nie być oficjalną granicą stosowaną przez lokalne władze.
+- Nawet jeśli OSM zwraca oficjalną granicę, może ona być nieodpowiednia do badań transportowych, ponieważ ma niewielki związek z miejscami, do których ludzie podróżują.
+
+Obszary dojazdów do pracy (TTWA) rozwiązują te problemy, tworząc system strefowania analogiczny do hydrologicznych zlewni.
+ TTWA zostały po raz pierwszy zdefiniowane jako sąsiadujące ze sobą strefy , w obrębie których 75% ludności dojeżdża do pracy [@coombes_efficient_1986] , i taka definicja została użyta w niniejszym rozdziale.
+Ponieważ Bristol jest dużym pracodawcą przyciągającym pracowników z okolicznych miast, jego TTWA jest znacznie większa niż granice miasta (patrz rysunek @ref(fig:bristol)).
+Wielokąt reprezentujący tę granicę zorientowaną na transport jest przechowywany w obiekcie`bristol_ttwa`, dostarczonym przezpakiet**spDataLarge**załadowany na początku niniejszego rozdziału.
+
+Strefy początkowe i docelowe użyte w niniejszym rozdziale są takie same: oficjalnie zdefiniowane strefy o pośredniej rozdzielczości geograficznej (ich[oficjalna](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/bulletins/annualsmallareapopulationestimates/2014-10-23)nazwa to Middle layer Super Output Areas lub MSOA).
+Każda z nich obejmuje około 8000 osób.
+Takie strefy administracyjne mogą dostarczyć istotnych informacji kontekstowych do analizy transportu, takich jak typ osób, które mogą odnieść największe korzyści z określonych interwencji (np. @moreno-monroy\_public\_2017).
+
+Rozdzielczość geograficzna tych stref jest ważna: zazwyczaj preferowane są małe strefy o wysokiej rozdzielczości geograficznej, ale ich duża liczba w dużych regionach może mieć konsekwencje dla przetwarzania danych.
+ Dotyczy to zwłaszcza analizy pochodzenia-miejsca docelowego (OD), w której liczba możliwości wzrasta jako funkcja nieliniowa liczby stref [@hollander_transport_2016] .
+
+```{block 13-transport-4, type="rmdnote"}
+Kolejna kwestia związana z małymi strefami dotyczy zasad anonimowości.
+Aby uniemożliwić ustalenie tożsamości osób przebywających w strefach, szczegółowe zmienne socjodemograficzne są często dostępne tylko w niskiej rozdzielczości geograficznej. 
+Na przykład podział środków transportu według wieku i płci jest dostępny na poziomie władz lokalnych w Wielkiej Brytanii, ale nie na znacznie wyższym poziomie obszaru wyjściowego, z którego każdy obejmuje około 100 gospodarstw domowych.
+Więcej szczegółów można znaleźć na stronie www.ons.gov.uk/methodology/geography.
+```
+
+102 strefy wykorzystane w niniejszym rozdziale są przechowywane na stronie`bristol_zones`, jak pokazano na rysunku @ref(fig:zones).
+Należy zauważyć
+
+```{block 13-transport-4, type="rmdnote"}
+,
+```
+
+że strefy są mniejsze na obszarach gęsto zaludnionych: każda z nich obejmuje podobną liczbę osób.
+Strona`bristol_zones`nie zawiera jednak żadnych danych dotyczących transportu, a jedynie nazwę i kod każdej strefy:
+
+```{r 13-transport-5}
+names(bristol_zones)
+```
+
+Aby dodać dane dotyczące podróży, wykonamy*połączenie**atrybutów*\\indeksowanie{attribute!join}, cojest typowym zadaniem opisanym w sekcji @ref(vector-attribute-joining).
+Wykorzystamy dane dotyczące podróży pochodzące z pytania dotyczącego dojazdów do pracy zawartego w spisie powszechnym Wielkiej Brytanii z 2011 r., dane przechowywane w pliku`bristol_od`, które zostały udostępnione przezportal danych[ons.gov.uk](https://www.ons.gov.uk/help/localstatistics).
+Plik`bristol_od`to zbiór danych OD dotyczących dojazdów do pracy między strefami pochodzący ze spisu powszechnego Wielkiej Brytanii z 2011 r. (patrz sekcja @ref(desire-lines)).
+Pierwsza kolumna to identyfikator strefy pochodzenia, a druga kolumna to strefa docelowa.
+`bristol_od`ma więcej wierszy niż`bristol_zones`, co odzwierciedla podróże*między*strefami, a nie same strefy:
+
+```{r 13-transport-6}
+nrow(bristol_od)
+nrow(bristol_zones)
+```
+
+Wyniki poprzedniego fragmentu kodu pokazują, że dla każdej strefy istnieje ponad 10 par OD, co oznacza, że przed połączeniem z`bristol_zones`będziemy musieli zagregować dane dotyczące pochodzenia i miejsca docelowego, jak pokazano poniżej (dane OD opisano w sekcji @ref(desire-lines)).
+
+```{r 13-transport-7}
+zones_attr = bristol_od |> 
+  group_by(o) |> 
+  summarize(across(where(is.numeric), sum)) |> 
+  dplyr::rename(geo_code = o)
+```
+
+Poprzedni fragment:
+
+- Zgrupowano dane według strefy pochodzenia (zawartej w kolumnie`o`).
+- Zgrupowano zmienne wzbiorze danych`bristol_od` ,*jeśli* były one liczbowe, aby znaleźć całkowitą liczbę osób mieszkających w każdej strefie według środka transportu [^13-transport-3.]
+- Zmieniono nazwę zmiennej grupującej`o`, aby pasowała do kolumny ID`geo_code`wobiekcie`bristol_zones`
+
+[^13-transport-3]:Afiliacyjna funkcja`_if`wymagazadania zmiennym pytania`TRUE`/`FALSE`, w tym przypadku „czy jest to wartość liczbowa?”, a podsumowane są tylko zmienne zwracające wartość true.
+
+Wynikowy obiekt`zones_attr`jest ramką danych z wierszami reprezentującymi strefy i zmienną ID.
+Możemy sprawdzić, czy identyfikatory pasują do tych w zbiorzedanych`zones`, używającoperatora`%in%`w następujący sposób:
+
+```{r 13-transport-8}
+summary(zones_attr$geo_code %in% bristol_zones$geo_code)
+```
+
+Wyniki pokazują, że wszystkie 102 strefy są obecne w nowym obiekcie, a`zone_attr` ma formę, która może zostać połączona ze strefami. [^13-transport-4]Odbywa
+się to za pomocą funkcji łączenia`left_join()`(należy pamiętać, że`inner_join()`dałoby tutaj ten sam wynik): \\index{join!inner}\\index{join!left}
+
+[^13-transport-4]: Ważne byłoby również sprawdzenie, czy identyfikatory pasują w przeciwnym kierunku w rzeczywistych danych.
+Można to zrobić, zmieniając kolejność identyfikatorów wpoleceniu„`summary()`”\---`summary(bristol_zones$geo_code %in% zones_attr$geo_code)`\--- lub używając „`setdiff()`”w następujący sposób:`setdiff(bristol_zones$geo_code, zones_attr$geo_code)`.
+
+```{r 13-transport-9}
+zones_joined = left_join(bristol_zones, zones_attr, by = "geo_code")
+sum(zones_joined$all)
+names(zones_joined)
+```
+
+Wynikiem jest plik`zones_joined`, który zawiera nowe kolumny przedstawiające łączną liczbę podróży rozpoczynających się w każdej strefie na badanym obszarze (prawie 1/4 miliona) oraz środek transportu (rower, pieszo, samochód i pociąg).
+Rozkład geograficzny miejsc rozpoczęcia podróży przedstawiono na lewym panelu rysunku @ref(fig:zones).
+Widać na nim, że większość stref ma od 0 do 4000 podróży rozpoczynających się w obszarze badania.
+Więcej podróży odbywają osoby mieszkające w pobliżu centrum Bristolu, a mniej na obrzeżach.
+Dlaczego tak jest?
+Pamiętajmy, że mamy do czynienia tylko z podróżami w obrębie regionu badania: niską liczbę podróży na obrzeżach regionu można wyjaśnić faktem, że wiele osób z tych peryferyjnych stref podróżuje do innych regionów poza obszarem badania.
+ Podróże poza badanym regionem można uwzględnić w modelu regionalnym za pomocą specjalnego identyfikatora miejsca docelowego obejmującego wszystkie podróże do strefy nieobjętej modelem [@hollander_transport_2016] .
+Dane zawarte w`bristol_od`pomijają jednak takie podróże: jest to model „wewnątrz strefowy”.
+
+Podobnie jak zbiory danych OD można agregować według strefy pochodzenia, można je również agregować w celu uzyskania informacji o strefach docelowych.
+Ludzie mają tendencję do skupiania się w centralnych miejscach.
+Wyjaśnia to, dlaczego rozkład przestrzenny przedstawiony w prawym panelu na rysunku @ref(fig:zones) jest stosunkowo nierównomierny, a najczęściej wybierane strefy docelowe koncentrują się w centrum Bristolu.
+Wynikiem jest plik`zones_od`, który zawiera nową kolumnę przedstawiającą liczbę miejsc docelowych podróży dla każdego środka transportu i jest tworzony w następujący sposób:
+
+```{r 13-transport-10}
+zones_destinations = bristol_od |> 
+  group_by(d) |> 
+  summarize(across(where(is.numeric), sum)) |> 
+  select(geo_code = d, all_dest = all)
+zones_od = inner_join(zones_joined, zones_destinations, by = "geo_code")
+```
+
+Uproszczona wersja rysunku @ref(fig:zones) została utworzona za pomocą poniższego kodu (aby odtworzyć rysunek,zobaczplik`13-zones.R`wfolderze[`code`](https://github.com/geocompx/geocompr/tree/main/code)repozytorium GitHub książki, a szczegółowe informacje na temat map fasetowych z**tmap**\\index{tmap (package)}znajdują się w sekcji @ref(faceted-maps):
+
+
+
+```{r 13-transport-11, eval=FALSE}
+qtm(zones_od, c("all", "all_dest")) +
+  tm_layout(panel.labels = c("Origin", "Destination"))
+```
+
+\`\`\`{r zones, echo=FALSE, fig.cap="Number of trips (commuters) living and working in the region. The left map shows zone of origin of commute trips; the right map shows zone of destination (generated by the script 
+).", message=FALSE, fig.scap="Number of trips (commuters) living and working in the region."}`13-zones.R`
+
+# file.edit("code/13-zones.R")
+
+source("code/13-zones.R", print.eval = TRUE)
+
+````
+
+## Desire lines
+
+Desire lines\index{desire lines} connect origins and destinations, representing where people *desire* to go, typically between zones.
+They represent the quickest 'bee line' or 'crow flies' route between A and B that would be taken, if it were not for obstacles such as buildings and windy roads getting in the way (we will see how to convert desire lines into routes in the next section).
+Typically, desire lines are represented geographically as starting and ending in the geographic (or population weighted) centroid of each zone.
+This is the type of desire line that we will create and use in this section, although it is worth being aware of 'jittering' techniques that enable multiple start and end points to increase the spatial coverage and accuracy of analyses building on OD data [@lovelace_jittering_2022b].
+
+We have already loaded data representing desire lines in the dataset `bristol_od`.
+This data frame represents the number of people traveling between the zone represented in `o` and `d`, as illustrated in Table \@ref(tab:od).
+To arrange the OD data by all trips and then filter-out only the top 5, type (please refer to Chapter \@ref(attr) for a detailed description of non-spatial attribute operations):
+
+```{r 13-transport-12}
+od_top5 = bristol_od |> 
+  slice_max(all, n = 5)
+````
+
+```{r od, echo=FALSE}
+od_top5 |> 
+  knitr::kable(
+    caption = paste("Sample of the top 5 origin-destination pairs in the",
+                    "Bristol OD data frame, representing travel desire",
+		    "lines between zones in the study area."),
+    caption.short = "Sample of the origin-destination data.",
+    booktabs = TRUE)
+```
+
+Wynikowa tabela przedstawia przegląd wzorców podróżowania mieszkańców Bristolu w zakresie dojazdów do pracy.
+Pokazuje ona, że chodzenie pieszo jest najpopularniejszym środkiem transportu wśród 5 najczęściej wybieranych par OD, że strefa`E02003043`jest popularnym celem podróży (centrum Bristolu, cel wszystkich 5 najczęściej wybieranych par OD) oraz żepodróże*wewnątrz strefy*, z jednej części strefy`E02003043`do drugiej (pierwszy wiersz tabeli @ref(tab:od)), stanowią najczęściej wybieraną parę OD w zbiorze danych.
+Jednak z punktu widzenia polityki surowe dane przedstawione w tabeli @ref(tab:od) mają ograniczoną przydatność: poza tym, że zawierają tylko niewielką część z 2910 par OD, niewiele mówią nam o tym,*gdzie*potrzebne są działania polityczne lub*jaki odsetek*podróży odbywa się pieszo i rowerem.
+Poniższe polecenie oblicza procent każdej linii pożądanej, która jest realizowana tymi aktywnymi środkami transportu:
+
+```{r 13-transport-13}
+bristol_od$Active = (bristol_od$bicycle + bristol_od$foot) /
+  bristol_od$all * 100
+```
+
+Istnieją dwa główne typy par OD:*między strefowe*i*wewnątrz strefowe*.Pary OD
+między strefowe reprezentują podróże między strefami, w których miejsce docelowe jest inne niż miejsce początkowe.Pary OD
+wewnątrz strefowe reprezentują podróże w obrębie tej samej strefy (patrz górny wiersz tabeli @ref(tab:od)).
+Poniższy fragment kodu dzieli`od_bristol`na te dwa typy:
+
+```{r 13-transport-14}
+od_intra = filter(bristol_od, o == d)
+od_inter = filter(bristol_od, o != d)
+```
+
+Następnym krokiem jest przekształcenie międzystrefowych par OD wobiekt`sf`reprezentujący linie pożądane, które można narysować na mapie za pomocąfunkcji**stplanr**\\index{stplanr (package)}`od2line()` . [^13-transport-5]
+
+[^13-transport-5]:`od2line()`działa poprzez dopasowanie identyfikatorów w pierwszych dwóch kolumnachobiektu`bristol_od`dokolumny identyfikatorów`zone_code`w geograficznymobiekcie`zones_od`.
+Należy pamiętać, że operacja ta generuje ostrzeżenie, ponieważ`od2line()`działa poprzez przypisanie punktów początkowych i końcowych każdej pary punkty początkowego i docelowego do*centroid*\\index{centroid}swojej strefy początkowej i docelowej.
+W praktyce należy używać wartości centroidów wygenerowanych na podstawie danych prognozowanych lub, najlepiej, centroidów*ważonych**populacją* [@lovelace_propensity_2017] .
+
+```{r 13-transport-15, warning=FALSE}
+desire_lines = od2line(od_inter, zones_od)
+```
+
+Ilustracja wyników została przedstawiona na rysunku @ref(fig:desire), którego uproszczona wersja została utworzona za pomocą następującego polecenia (aby dokładnie odtworzyć rysunek,zobacz kod w`13-desire.R`, a szczegółowe informacje na temat wizualizacji za pomocą**tmap**\\index{tmap (package)}znajdują się w rozdziale @ref(adv-map)):
+
+```{r 13-transport-16, eval=FALSE}
+qtm(desire_lines, lines.lwd = "all")
+```
+
+```{r desire, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Desire lines representing trip patterns in Bristol, with width representing number of trips and color representing the percentage of trips made by active modes (walking and cycling). The four black lines represent the interzonal OD pairs in Table 13.1.", fig.asp=0.8, fig.scap="Desire lines representing trip patterns in Bristol."}
+source("code/13-desire.R", print.eval = TRUE)
+```
+
+Mapa pokazuje, że centrum miasta dominuje w strukturze transportu w regionie, co sugeruje, że należy nadać priorytet politykom dotyczącym tego obszaru, chociaż widocznych jest również kilka peryferyjnych subcentrów.Linie
+pożądane są ważnymi, uogólnionymi elementami systemów transportowych.
+Bardziej konkretnymi elementami są węzły, które mają określone miejsca docelowe (w przeciwieństwie do hipotetycznych linii prostych reprezentowanych przez linie pożądane).
+Węzły zostały omówione w następnej sekcji.
+
+## Węzły{#nodes}
+
+Węzły w geograficznych zbiorach danych dotyczących transportu to punkty wśród przeważających elementów liniowych, które składają się na sieci transportowe.
+Ogólnie rzecz biorąc, istnieją dwa główne typy węzłów transportowych:
+
+1. Węzły niepołożone bezpośrednio w sieci\\index{network}, takie jak centroidy stref\\index{centroid}lub indywidualne miejsca początkowe i docelowe, takie jak domy i miejsca pracy
+2. Węzły będące częścią sieci transportowych.
+    Technicznie rzecz biorąc, węzeł może znajdować się w dowolnym punkcie sieci transportowej, ale w praktyce są to często specjalne rodzaje wierzchołków, takie jak skrzyżowania dróg (węzły) oraz punkty wejścia lub wyjścia z sieci transportowej, takie jak przystanki autobusowe i stacje kolejowe [^13-transport-6]
+
+[^13-transport-6]: Funkcja[`st_network_blend()`](https://luukvdmeer.github.io/sfnetworks/reference/st_network_blend.html)zpakietu**sfnetworks**umożliwia tworzenie nowych węzłów w sieci na podstawie bliskości do dowolnych punktów w sieci lub poza nią.
+
+Sieci transportowe można przedstawić jako wykresy\\index{graph}, w których każdy segment jest połączony (za pomocą krawędzi reprezentujących linie geograficzne) z jedną lub kilkoma innymi krawędziami\\index{edge}w sieci.
+ Węzły poza siecią można dodać za pomocą „łączników centroidowych”, nowych segmentów tras do pobliskich węzłów w sieci [@hollander_transport_2016] . [^13-transport-7]
+Każdy węzeł\\index{node}w sieci jest następnie połączony jedną lub kilkoma „krawędziami”, które reprezentują poszczególne segmenty sieci.W sekcji @ref(
+route-networks) zobaczymy, jak sieci transportowe mogą być przedstawione w postaci wykresów.
+
+[^13-transport-7]: Lokalizacja tych łączników powinna być starannie dobrana, ponieważ mogą one prowadzić do przeszacowania natężenia ruchu w ich bezpośrednim otoczeniu [@jafari_investigation_2015] .
+
+Przystanki transportu publicznego są szczególnie ważnymi węzłami, które można przedstawić jako dwa rodzaje węzłów: przystanek autobusowy będący częścią drogi lub duża stacja kolejowa reprezentowana przez punkt wejścia dla pieszych oddalony o setki metrów od torów kolejowych.
+W celu zilustrowania węzłów transportu publicznego w kontekście badania dotyczącego zwiększenia popularności jazdy na rowerze w Bristolu wykorzystamy stacje kolejowe.
+Dane dotyczące tych stacji zostały udostępnione przez**spDataLarge**na stronie`bristol_stations`.
+
+Częstą przeszkodą powstrzymującą ludzi przed rezygnacją z samochodów do dojazdów do pracy jest zbyt duża odległość między domem a miejscem pracy, aby pokonywać ją pieszo lub rowerem.Transport
+publiczny może zmniejszyć tę barierę, zapewniając szybką i wydajną opcję dla popularnych tras do miast.
+Z punktu widzenia aktywnego podróżowania, „odcinki” transportu publicznego w przypadku dłuższych podróży dzielą się na trzy części:
+
+- Odcinek początkowy, zazwyczaj z obszarów mieszkalnych do stacji transportu publicznego
+- Odcinek transportu publicznego, który zazwyczaj przebiega od stacji najbliższej miejsca rozpoczęcia podróży do stacji najbliższej miejsca docelowego
+- Odcinek docelowy, od stacji wysiadania do miejsca docelowego
+
+W oparciu o analizę przeprowadzoną w sekcji @ref(desire-lines), węzły transportu publicznego mogą być wykorzystane do skonstruowania trzyczęściowych linii pożądanych dla podróży, które można odbyć autobusem i (środkiem transportu używanym w tym przykładzie) koleją.
+Pierwszym etapem jest zidentyfikowanie linii pożądanych z największym udziałem transportu publicznego, co w naszym przypadku jest łatwe, ponieważ nasz wcześniej utworzony zbiór danych`desire_lines`zawiera już zmienną opisującą liczbę podróży pociągiem (potencjał transportu publicznego można również oszacować za pomocą usług planowania tras transportu publicznego, takich jak[OpenTripPlanner](http://www.opentripplanner.org/)).
+Aby ułatwić zrozumienie tego podejścia, wybierzemy tylko trzy najpopularniejsze linie pożądane\\index{desire lines}pod względem wykorzystania kolei:
+
+```{r 13-transport-20}
+desire_rail = top_n(desire_lines, n = 3, wt = train)
+```
+
+Wyzwaniem jest teraz „podział” każdej z tych linii na trzy części, reprezentujące podróże przez węzły transportu publicznego.
+Można to zrobić, przekształcając linię pożądaną w obiekt wieloliniowy składający się z trzech geometrii linii reprezentujących punkty początkowe, transport publiczny i punkty docelowe podróży.
+Operację tę można podzielić na trzy etapy: utworzenie macierzy (punktów początkowych, docelowych i punktów pośrednich reprezentujących stacje kolejowe), identyfikację najbliższych sąsiadów\\index{nearest neighbor}oraz przekształcenie w obiekty typu multilinestrings\\index{vector!multilinestrings}.
+Operacje te są wykonywane przez`line_via()`.
+Funkcja**stplanr**\\index{stplanr (package)}pobiera linie i punkty wejściowe i zwraca kopię linii pożądanych —szczegółowe informacje na temat działania tej funkcjimożna znaleźć w[`?line_via()`](https://docs.ropensci.org/stplanr/reference/line_via.html).
+Wynik jest taki sam jak linia wejściowa, z wyjątkiem nowych kolumn geometrii reprezentujących podróż przez węzły transportu publicznego, jak pokazano poniżej:
+
+```{r 13-transport-21}
+ncol(desire_rail)
+desire_rail = line_via(desire_rail, bristol_stations)
+ncol(desire_rail)
+```
+
+Jak pokazano na rysunku @ref(fig:stations), początkowelinie`desire_rail`mają teraz trzy dodatkowe kolumny listy geometrii\\index{list column}reprezentujące podróż z domu do stacji początkowej, stamtąd do miejsca docelowego, a na koniec ze stacji docelowej do miejsca docelowego.
+W tym przypadku odcinek docelowy jest bardzo krótki (odległość pokonywana pieszo), ale odcinki początkowe mogą być wystarczająco długie, aby uzasadnić inwestycję w infrastrukturę rowerową, która zachęci ludzi do jazdy na rowerze do stacji na początkowym odcinku podróży do pracy w obszarach mieszkalnych otaczających trzy stacje początkowe na rysunku @ref(fig:stations).
+
+```{r stations, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Station nodes (red dots) used as intermediary points that convert straight desire lines with high rail usage (thin green lines) into three legs: to the origin station (orange) via public transport (blue) and to the destination (pink, not visible because it is short).", fig.scap="Station nodes."}
+# zone_cents = st_centroid(zones_od)
+zone_cents = st_centroid(zones_od)
+zone_cents_rail = zone_cents[desire_rail, ]
+bb = tmaptools::bb(desire_rail, ext = 1.1)
+desire_rail_plot = rbind(
+  st_sf(data.frame(Geometry = "Desire line (original)"), geometry = desire_rail$geometry),
+  st_sf(data.frame(Geometry = "Leg 1 (origin to station)"), geometry = desire_rail$leg_orig),
+  st_sf(data.frame(Geometry = "Leg 2 (station to station)"), geometry = desire_rail$leg_via),
+  st_sf(data.frame(Geometry = "Leg 3 (station to destination)"), geometry = desire_rail$leg_dest)
+) 
+desire_rail_plot = desire_rail_plot |> 
+  mutate(lty = case_when(Geometry == "Desire line (original)" ~ 2, TRUE ~ 1)) |> 
+  mutate(size = case_when(Geometry == "Desire line (original)" ~ 1, TRUE ~ 2))
+bristol_rail_points = rbind(
+  st_sf(data.frame(
+    Node = "Origin and destination locations",
+    col = "black"
+    ), geometry = zone_cents_rail$geometry),
+  st_sf(data.frame(
+    Node = "Public transport node",
+    col = "red"
+    ), geometry = bristol_stations$geometry)
+)
+tm_shape(zones_od) +
+  tm_fill(fill_alpha = 0.2, lwd = 0.1) +
+  tm_shape(desire_rail_plot, bbox = bb, is.main = TRUE) +
+  tm_lines(col = "Geometry",
+           col.scale = tm_scale(values = "Set2"),
+           col.legend = tm_legend(position = tm_pos_in("left", "top")),
+           lwd = 2,
+           lty = "lty",
+           lty.scale = tm_scale_categorical(),
+           lty.legend = tm_legend_hide()) +
+  tm_shape(bristol_rail_points) +
+  tm_symbols(fill = "col", size = 0.75) +
+  tm_scalebar()
+```
+
+## Trasy
+
+\\index{routes}
+Z geograficznego punktu widzenia trasy są liniami pożądanymi\\index{desire lines},które nie są już proste: punkty początkowe i docelowe są takie same jak w przypadku przedstawienia podróży linią pożądaną, ale droga z punktu A do punktu B jest bardziej złożona.
+Geometria tras jest zazwyczaj (ale nie zawsze) określana przez sieć transportową.
+
+Podczas gdy linie pożądane zawierają tylko dwa wierzchołki (punkt początkowy i końcowy), trasy mogą zawierać dowolną liczbę wierzchołków, reprezentujących punkty między A i B połączone liniami prostymi: definicja geometrii ciągu linii.
+Trasy pokonujące duże odległości lub przebiegające po skomplikowanych sieciach mogą mieć tysiące wierzchołków; trasy w sieciach opartych na siatce lub uproszczonych sieciach drogowych mają zazwyczaj mniej wierzchołków.
+
+Trasy są generowane na podstawie linii pożądanych lub, częściej, macierzy zawierających pary współrzędnych reprezentujące linie pożądane.
+Proces wyznaczania trasy jest realizowany przez szereg szeroko zdefiniowanych*silników wyznaczania tras*: oprogramowanie i usługi internetowe, które zwracają geometrie i atrybuty opisujące sposób dotarcia z punktu początkowego do punktu docelowego.Silniki
+wyznaczania tras można klasyfikować na podstawie*miejsca*ich działania w stosunku do R:
+
+- Trasowanie w pamięci przy użyciu pakietów R, które umożliwiają obliczanie tras (opisane w sekcji @ref(memengine))
+- Lokalnie hostowane silniki routingu zewnętrzne względem R, które można wywołać z R (sekcja @ref(localengine))
+- Silniki routingu hostowane zdalnie przez podmioty zewnętrzne, które zapewniają interfejs API sieci Web, który można wywołać z poziomu R (sekcja @ref(remoteengine))
+
+Przed opisaniem każdego z nich warto przedstawić inne sposoby kategoryzacji silników routingu.Silniki
+routingu mogą być multimodalne, co oznacza, że mogą obliczać trasy składające się z więcej niż jednego środka transportu, lub nie.
+Wielomodalne silniki routingu mogą zwracać wyniki składające się z wielu*etapów*, z których każdy jest realizowany innym środkiem transportu.
+Optymalna trasa z obszaru mieszkalnego do obszaru handlowego może obejmować (1) dojście do najbliższego przystanku autobusowego, (2) przejazd autobusem do najbliższego węzła w pobliżu miejsca docelowego oraz (3) dojście do miejsca docelowego, biorąc pod uwagę zestaw parametrów wejściowych.
+Punkty przejścia między tymi trzema etapami są powszechnie nazywane „wejściem” i „wyjściem”, co oznacza wsiadanie/wysiadanie z pojazdu transportu publicznego.Silniki
+trasowania multimodalnego, takie jak R5, są bardziej zaawansowane i mają większe wymagania dotyczące danych wejściowych niż silniki trasowania „jednomodalnego”, takie jak OpenStreetMap Routing Machine (OSRM), opisane w sekcji @ref(localengine).
+
+Główną zaletą silników multimodalnych jest ich zdolność do przedstawiania podróży „transit” (transport publiczny) pociągami, autobusami itp.Silniki
+trasowania multimodalnego wymagają zestawów danych wejściowych przedstawiających sieci transportu publicznego, zazwyczaj wplikachGeneral Transit Feed Specification ([GTFS](https://developers.google.com/transit/gtfs)), które mogą być przetwarzane za pomocą funkcji wpakietach[**tidytransit**](https://r-transit.github.io/tidytransit/index.html)i[**gtfstools**](https://ipeagit.github.io/gtfstools/)(dostępne są również inne pakiety i narzędzia do pracy z plikami GTFS).
+Silniki trasowania jednomodalnego mogą być wystarczające dla projektów skupiających się na konkretnych (niepublicznych) środkach transportu.
+Innym sposobem klasyfikacji silników trasowania (lub ustawień) jest poziom geograficzny wyników: trasy, odcinki i segmenty.
+
+### Trasy, odcinki i segmenty{#route-legs-segments}
+
+Silniki trasowania mogą generować wyniki na trzech poziomach geograficznych: tras, odcinków i segmentów:
+
+- Wyniki na poziomie**trasy**zawierają jedną cechę (zazwyczaj wieloliniowy ciąg i powiązany wiersz w reprezentacji ramki danych) dla każdej pary punkt początkowy-punkt docelowy, co oznacza jeden wiersz danych na każdą podróż.
+- Wyniki na poziomie**odcinków**zawierają pojedynczą cechę i powiązane atrybuty dla każdego*środka transportu*w każdej parze punkt początkowy-punkt docelowy (OD), jak opisano w sekcji @ref(nodes). W przypadku podróży obejmujących tylko jeden środek transportu (na przykład jazda samochodem z domu do pracy, pomijając krótki spacer do samochodu), odcinek jest taki sam jak trasa: podróż samochodem. W przypadku podróży z wykorzystaniem transportu publicznego odcinki dostarczają kluczowych informacji.Funkcja**r5r**`detailed_itineraries()`zwraca odcinki, które, co może być mylące, są czasami nazywane „segmentami”.
+- Wyniki na poziomie segmentów dostarczają najbardziej szczegółowych informacji o trasach, zawierając zapisy dla każdego małego odcinka sieci transportowej. Zazwyczaj segmenty mają podobną długość lub są identyczne z drogami w OpenStreetMap.Funkcja**cyclestreets**`journey()`zwraca dane na poziomie segmentów,które można agregować, grupując je według danych dotyczących miejsca początkowego i docelowego zwracanych przezfunkcję`route()`w**stplanr**
+
+Większość silników wyznaczających trasy domyślnie zwraca dane na poziomie trasy, chociaż silniki multimodalne zazwyczaj dostarczają dane na poziomie odcinka (jedna cecha na każdy ciągły ruch jednym środkiem transportu).Dane
+na poziomie segmentu mają tę zaletę, że dostarczają więcej szczegółów.
+Pakiet**cyclestreets**zwraca wiele poziomów „ciszy” dla każdej trasy, umożliwiając identyfikację „najsłabszego ogniwa” w sieciach rowerowych.
+Wady wyników na poziomie segmentu obejmują zwiększony rozmiar plików i złożoność związaną z dodatkowymi szczegółami.
+
+Wyniki na poziomie trasy można przekształcić w wyniki na poziomie segmentu za pomocą funkcji`stplanr::overline()` [@morgan_travel_2020] .
+Podczas pracy z danymi na poziomie segmentu lub odcinka trasy statystyki na poziomie trasy można uzyskać, grupując kolumny reprezentujące punkty początkowe i końcowe podróży oraz podsumowując/agregując kolumny zawierające dane na poziomie segmentu.
+
+### Trasowanie w pamięci za pomocą R{#memengine}
+
+Silniki routingu w języku R umożliwiająwykorzystaniesieci tras przechowywanych jako obiekty R*w pamięci*jako podstawy do obliczania tras.
+Dostępne opcje obejmująpakiety[**sfnetworks**](https://luukvdmeer.github.io/sfnetworks/)\\index{sfnetworks (package)},[**dodgr**](https://urbananalyst.github.io/dodgr/)i[**cppRouting**](https://github.com/vlarmet/cppRouting), z których każdy zapewnia własny system klas do reprezentowania sieci tras, co zostanie omówione w następnej sekcji.
+
+Chociaż natywne opcje routingu w R są szybkie i elastyczne, generalnie trudniej je skonfigurować niż dedykowane silniki routingu do realistycznego obliczania tras.
+Routing jest trudnym problemem i poświęcono wiele setek godzin na opracowanie silników routingu typu open source, które można pobrać i hostować lokalnie.
+Z drugiej strony silniki routingu oparte na języku R mogą dobrze nadawać się do modelowania eksperymentów i analizy statystycznej wpływu zmian na sieć.
+Zmiana charakterystyki sieci tras (lub wag związanych z różnymi typami segmentów tras), ponowne obliczanie tras i analiza wyników w wielu scenariuszach w jednym języku mają zalety w zastosowaniach badawczych.
+
+### Lokalnie hostowane dedykowane silniki routingu{#localengine}
+
+**Lokalnie hostowane**silniki routingu obejmują OpenTripPlanner,[Valhalla](https://github.com/valhalla/valhalla)i R5 (które są multimodalne) oraz OpenStreetMap Routing Machine (OSRM) (który jest „unimodalny”).Dostęp
+do nich można uzyskać z języka R za pomocą pakietów**opentripplanner**,[**valhallr**](https://github.com/chris31415926535/valhallr),**r5r**i[**osrm**](https://github.com/riatelab/osrm) [@morgan_opentripplanner_2019; @pereira_r5r_2021] .
+Lokalnie hostowane silniki routingu działają na komputerze użytkownika, ale w procesie oddzielnym od R.
+Ich zaletą jest szybkość działania i kontrola nad profilem wagowym dla różnych środków transportu.
+Wady obejmują trudność w lokalnym odwzorowaniu złożonych sieci, brak predefiniowanych profili routingu, dynamikę czasową (np. ruch drogowy) oraz konieczność instalacji specjalistycznego oprogramowania.
+
+### Zdalnie hostowane dedykowane silniki routingu{#remoteengine}
+
+**Zdalnie hostowane**silniki routingu{routing}wykorzystują interfejs API{API}do wysyłania zapytań dotyczących miejsc początkowych i docelowych oraz zwracania wyników.
+Usługi routingu oparte na silnikach routingu typu open source, takie jak publicznie dostępna usługa OSRM, działają tak samo, gdy są wywoływane z R jako instancje hostowane lokalnie, wymagając jedynie aktualizacji argumentów określających „podstawowe adresy URL”.
+Jednak fakt, że zewnętrzne usługi routingu są hostowane na dedykowanej maszynie (zwykle finansowanej przez komercyjną firmę, która ma motywację do generowania dokładnych tras) może dać im pewne zalety, w tym:
+
+- Świadczenie usług routingu na całym świecie (lub zazwyczaj przynajmniej na dużym obszarze)
+- Ustalone usługi routingu są zazwyczaj regularnie aktualizowane i często mogą reagować na poziomy ruchu
+- Usługi routingu zazwyczaj działają na dedykowanym sprzęcie i oprogramowaniu, w tym systemach takich jak load balancery, aby zapewnić stałą wydajność
+
+Wady zdalnych usług routingu obejmują szybkość, gdy nie jest możliwe wykonywanie zadań wsadowych (często opierają się one na transferze danych przez Internet na zasadzie „trasa po trasie”), cenę (na przykład API routingu Google ogranicza liczbę bezpłatnych zapytań) oraz kwestie licencyjne.Pakiety
+[**googleway**](http://symbolixau.github.io/googleway/)i[**mapbox**](https://walker-data.com/mapboxapi/articles/navigation.html)demonstrują to podejście, zapewniając dostęp do usług routingu odpowiednio od Google i Mapbox\\index{API}.
+Bezpłatne (ale ograniczone pod względem szybkości) usługi routingu obejmują[OSRM](http://project-osrm.org/)i[openrouteservice.org](https://openrouteservice.org/), do których można uzyskać dostęp z R za pomocąpakietów[**osrm**](https://rgeomatic.hypotheses.org/category/osrm)i[**openrouteservice**](https://github.com/GIScience/openrouteservice-r), przy czym ten drugi nie znajduje się w CRAN.
+Istnieją również bardziej specjalistyczne usługi routingu, takie jak ta świadczona przez[CycleStreets.net](https://www.cyclestreets.net/), planer tras rowerowych i organizację non-profit zajmującą się technologią transportową „dla rowerzystów, przez rowerzystów”.
+Chociaż użytkownicy R mogą uzyskać dostęp do tras CycleStreets za pośrednictwem pakietu[**cyclestreets**](https://rpackage.cyclestreets.net/), wiele usług routingu nie posiada interfejsów R, co stanowi znaczną szansę dla rozwoju pakietów: stworzenie pakietu R zapewniającego interfejs do internetowego API może być satysfakcjonującym doświadczeniem.
+
+### Hierarchie skurczów i przypisanie ruchu
+
+Hierarchie skurczów i przypisywanie ruchu to zaawansowane, ale ważne tematy w modelowaniu transportu, o których warto wiedzieć, zwłaszcza jeśli chcesz, aby Twój kod był skalowalny do dużych sieci.
+Obliczanie wielu tras wymaga dużych zasobów obliczeniowych i może trwać wiele godzin, co doprowadziło do opracowania kilku algorytmów przyspieszających obliczenia tras.**Hierarchie**
+**skurczów**to dobrze znany algorytm, który może znacznie (w niektórych przypadkach nawet 1000-krotnie) przyspieszyć zadania związane z wyznaczaniem tras, w zależności od wielkości sieci.Hierarchie
+skurczów są wykorzystywane w tle w silnikach wyznaczania tras wspomnianych w poprzednich sekcjach.
+
+Przypisywanie ruchu jest problemem ściśle związanym z routingiem: w praktyce najkrótsza droga między dwoma punktami nie zawsze jest najszybsza, zwłaszcza w przypadku zatłoczenia.
+Proces ten wykorzystuje zbiory danych OD, opisane w sekcji @ref(desire-lines), i przypisuje ruch do każdego segmentu w sieci, generując sieci tras opisane w sekcji @ref(route-networks).
+ Ustalonym rozwiązaniem jest zasada równowagi użytkowników Warda, która pokazuje, że aby być realistycznym, przy szacowaniu przepływów w sieci należy uwzględnić zatłoczenie, odwołując się do matematycznie zdefiniowanej zależności między kosztem a przepływem [@wardrop_theoretical_1952] .
+Ten problem optymalizacji można rozwiązać za pomocą algorytmów iteracyjnych,które są zaimplementowane wpakiecie[**cppRouting**](https://github.com/vlarmet/cppRouting), który implementuje również hierarchie kontrakcji dla szybkiego routingu.
+
+### Routing: praktyczny przykład
+
+Zamiast routingu\\index{routing}*wszystkich*linii pożądanych wygenerowanych w sekcji @ref(desire-lines), skupiamy się na podzbiorze, który jest bardzo istotny z punktu widzenia polityki.
+Przeprowadzenie operacji wymagającej dużej mocy obliczeniowej na podzbiorze przed próbą przetworzenia całego zbioru danych jest często rozsądnym rozwiązaniem i ma to zastosowanie w przypadku routingu.
+Routing może być czasochłonny i pamięciochłonny, co skutkuje powstaniem dużych obiektów, ze względu na szczegółową geometrię i dodatkowe atrybuty obiektów trasy.
+W związku z tym w tej sekcji przed obliczeniem tras przefiltrujemy linie pożądane.
+
+Jazda na rowerze jest najbardziej korzystna, gdy zastępuje podróże samochodem.
+ Krótkie podróże (około 5 km, które można pokonać na rowerze w 15 minut przy prędkości 20 km/h) mają stosunkowo duże prawdopodobieństwo odbycia się na rowerze, a maksymalna odległość wzrasta, gdy podróże odbywają się na rowerze elektrycznym [@lovelace_propensity_2017] .
+Te uwagi znalazły odzwierciedlenie w poniższym fragmencie kodu, który filtruje linie pożądane i zwraca obiekt`desire_lines_short`reprezentujący pary OD, między którymi odbywa się wiele (ponad 100) krótkich (odległość euklidesowa od 2,5 do 5 km) podróży samochodem:
+
+```{r 13-transport-17, message=FALSE}
+desire_lines$distance_km = as.numeric(st_length(desire_lines)) / 1000
+desire_lines_short = desire_lines |> 
+  filter(car_driver >= 100, distance_km <= 5, distance_km >= 2.5)
+```
+
+W powyższym kodzie funkcja`st_length()`obliczyła długość każdej linii pożądanej, zgodnie z opisem w sekcji @ref(distance-relations).
+Funkcja`filter()`z**dplyr**filtruje zbiórdanych`desire_lines`na podstawie kryteriów opisanych powyżej\\index{filter operation|see{attribute!subsetting}}, zgodnie z opisem w sekcji @ref(vector-attribute-subsetting).
+Kolejnym etapem jest przekształcenie tych linii pożądanych w trasy.Odbywa
+się to za pomocą publicznie dostępnej usługi OSRM zfunkcjami**stplanr**`route()`i`route_osrm()`\\index{stplanr (package)}w poniższym fragmencie kodu:
+
+```{r 13-transport-18, message=FALSE}
+routes_short = route(l = desire_lines_short, route_fun = route_osrm,
+                     osrm.profile = "car")
+```
+
+Wynikiem jest`routes_short`,obiekt`sf`reprezentujący trasy w sieci transportowej\\index{network}, które są odpowiednie do jazdy na rowerze (przynajmniej według silnika routingu OSRM), po jednej dla każdej linii pożądanej.
+Uwaga: wywołania zewnętrznych silników routingu, takich jak w powyższym poleceniu,działają tylko przy połączeniu z Internetem (a czasami przy kluczu API przechowywanym w zmiennej środowiskowej, choć nie w tym przypadku).
+Oprócz kolumn zawartych wobiekcie`desire_lines`nowy zbiór danych tras zawierakolumny`distance`(odnoszące się tym razem do odległości trasy) i`duration`(w sekundach), które dostarczają potencjalnie przydatnych dodatkowych informacji na temat charakteru każdej trasy.
+Narysujemy linie pożądane, wzdłuż których odbywa się wiele krótkich podróży samochodem, obok tras rowerowych.
+ Ustawienie szerokości tras proporcjonalnie do liczby podróży samochodem, które potencjalnie można by zastąpić, stanowi skuteczny sposób ustalenia priorytetów interwencji w sieci drogowej [@lovelace_propensity_2017] .
+ Rysunek @ref(fig:routes) pokazuje trasy, po których ludzie pokonują krótkie odległości (kod źródłowy znajduje się na stronie github.com/geocompx). [^13-transport-8]
+
+[^13-transport-8]: Należy zauważyć, że czerwone trasy i czarne linie pożądane nie zaczynają się dokładnie w tych samych punktach.Wynika
+to z faktu, że centroidy stref rzadko leżą na sieci tras; zamiast tego trasy rozpoczynają się w węźle sieci transportowej najbliższym centroidowi.
+ Należy również zauważyć, że trasy mają swój początek w centrach stref, co jest uproszczeniem stosowanym w modelach transportowych w celu zmniejszenia zasobów obliczeniowych potrzebnych do obliczenia najkrótszej trasy między wszystkimi kombinacjami możliwych punktów początkowych i docelowych [@hollander_transport_2016] .
+
+```{r routes, warning=FALSE, fig.cap="Routes along which many (100+) short (<5km Euclidean distance) car journeys are made (red) overlaying desire lines representing the same trips (black) and zone centroids (dots).", fig.scap="Routes along which many car journeys are made.", echo=FALSE}
+# TODO (low priority, RL): add a facetted plot showing network cleaning/overline functions
+# TODO (low priority, RL, 2022-10): add points representing Bradley Stoke and Bristol to the map
+# waldo::compare(
+#   sf::st_crs(desire_lines_short),
+#   sf::st_crs(routes_short)
+# )
+routes_plot_data = rbind(
+  desire_lines_short |> transmute(Entity = "Desire lines") |> sf::st_set_crs("EPSG:4326"),
+  routes_short |> transmute(Entity = "Routes") |> sf::st_set_crs("EPSG:4326")
+)
+zone_cents_routes = zone_cents[desire_lines_short, ]
+tm_shape(zones_od) +
+  tm_fill(fill_alpha = 0.2, lwd = 0.1) +
+  tm_shape(desire_lines_short, is.main = TRUE) + 
+  tm_lines(lty = 2) +
+  tm_shape(routes_short) +
+  tm_lines(col = "red") +
+  tm_add_legend(title = "Entity", labels = c("Desire lines", "Routes"),
+                type = "lines", col = c("black", "red"), lty = c(2, 1),
+                position = tm_pos_in("left", "top")) +
+  tm_shape(zone_cents_routes) +
+  tm_symbols(fill = "black", size = 0.5) +
+  tm_scalebar()
+```
+
+Wizualizacja wyników na interaktywnej mapie pokazuje, że wiele krótkich podróży samochodem odbywa się w okolicach Bradley Stoke, około 10 km na północ od centrum Bristolu.
+Łatwo znaleźć wyjaśnienie wysokiego poziomu uzależnienia od samochodów w tym regionie: według[Wikipedii](https://en.wikipedia.org/wiki/Bradley_Stoke)Bradley Stoke jest „największym nowym miastem w Europie zbudowanym dzięki prywatnym inwestycjom”, co sugeruje ograniczoną dostępność transportu publicznego.
+ Ponadto miasto otoczone jest dużymi (nieprzyjaznymi dla rowerzystów) strukturami drogowymi, w tym autostradami M4 i M5 [@tallon_bristol_2007] .
+
+Przekształcenie linii pożądanych tras podróży\\indeksu{desire lines}w trasyma wiele zalet.
+Należy pamiętać, że nie możemy być pewni, ile (jeśli w ogóle) podróży będzie przebiegać dokładnie trasami obliczonymi przez silniki wyznaczające trasy.
+Jednak wyniki na poziomie tras i ulic/dróg/odcinków mogą mieć duże znaczenie dla polityki. Wyniki
+ dotyczące odcinków tras mogą umożliwić priorytetowe traktowanie inwestycji tam, gdzie są one najbardziej potrzebne, zgodnie z dostępnymi danymi [@lovelace_propensity_2017] .
+
+## Sieci tras
+
+\\index{network}
+Podczas gdy trasy zazwyczaj zawierają dane dotyczące*zachowań*podróżnychna tym samym poziomie geograficznym, co linie pożądane i pary OD, zbiory danych dotyczące sieci tras zazwyczaj przedstawiają fizyczną sieć transportową.
+Każdy*segment*w sieci tras odpowiada w przybliżeniu ciągłemu odcinkowi ulicy między skrzyżowaniami i pojawia się tylko raz, chociaż średnia długość segmentów zależy od źródła danych (segmenty w zbiorzedanych`bristol_ways`pochodzącym z OSM,wykorzystanym w tej sekcji, mają średnią długość nieco ponad 200 m, przy odchyleniu standardowym wynoszącym prawie 500 m).
+Zmienność długości segmentów można wyjaśnić faktem, że w niektórych obszarach wiejskich skrzyżowania są oddalone od siebie, podczas gdy w gęsto zaludnionych obszarach miejskich co kilka metrów znajdują się skrzyżowania i inne przerwy w segmentach.
+
+Sieci tras mogą być dane wejściowe lub wyjściowe w projektach analizy danych transportowych lub jednym i drugim.
+Każde badanie transportowe,które obejmuje obliczanie tras,wymaga zbioru danych sieci tras w wewnętrznych lub zewnętrznych silnikach wyznaczania tras (w tym drugim przypadku dane sieci tras nie muszą być importowane do R).
+Jednak sieci tras są również ważnym wynikiem wielu projektów badawczych dotyczących transportu: podsumowanie danych, takich jak potencjalna liczba podróży wykonanych na poszczególnych odcinkach i przedstawionych jako sieć tras, może pomóc w ustaleniu priorytetów inwestycji tam, gdzie są one najbardziej potrzebne.
+\\index{network}
+
+Aby zademonstrować
+
+,
+
+jak tworzyć sieci tras jako wynik pochodzący z danych na poziomie tras, wyobraźmy sobie prosty scenariusz zmiany środka transportu.
+Wyobraźmy sobie, że 50% podróży samochodem na trasach o długości od 0 do 3 km zostaje zastąpionych jazdą na rowerze, a odsetek ten spada o 10 punktów procentowych za każdy dodatkowy kilometr trasy, tak że 20% podróży samochodem na trasach o długości 6 km zostaje zastąpionych jazdą na rowerze, a żadna podróż samochodem na trasach o długości 8 km lub większej nie zostaje zastąpiona jazdą na rowerze. Jest
+ to oczywiście scenariusz nierealny [@lovelace_propensity_2017] , ale stanowi użyteczny punkt wyjścia.
+W tym przypadku możemy modelować zmianę środka transportu z samochodu na rower w następujący sposób:
+
+```{r uptakefun}
+uptake = function(x) {
+  case_when(
+    x <= 3 ~ 0.5,
+    x >= 8 ~ 0,
+    TRUE ~ (8 - x) / (8 - 3) * 0.5
+  )
+}
+routes_short_scenario = routes_short |> 
+  mutate(uptake = uptake(distance / 1000)) |> 
+  mutate(bicycle = bicycle + car_driver * uptake,
+         car_driver = car_driver * (1 - uptake))
+sum(routes_short_scenario$bicycle) - sum(routes_short$bicycle)
+```
+
+Po stworzeniu scenariusza, w którym około 4000 podróży zostało zastąpionych jazdą na rowerze, możemy teraz modelować, gdzie będzie miała miejsce ta zaktualizowana modelowana aktywność rowerowa.
+W tym celu użyjemy funkcji`overline()`zpakietu**stplanr**.
+ Funkcja ta rozdziela ciągi linii na skrzyżowaniach (gdzie spotykają się dwie lub więcej geometrii ciągów linii) i oblicza zagregowane statystyki dla każdego unikalnego odcinka trasy [@morgan_travel_2020] , przyjmując obiekt zawierający trasy i nazwy atrybutów do podsumowania jako pierwszy i drugi argument:
+
+```{r rnet1}
+route_network_scenario = overline(routes_short_scenario, attrib = "bicycle")
+```
+
+Wyniki dwóch poprzednich fragmentów kodu zostały podsumowane na poniższym rysunku @ref(fig:rnetvis).
+
+```{r rnetvis, out.width="49%", fig.show="hold", fig.cap="The percentage of car trips switching to cycling as a function of distance (left) and route network level results of this function (right).", echo=FALSE, fig.height=9.5}
+routes_short_scenario |> 
+  ggplot() +
+  geom_line(aes(distance / 1000, uptake), color = "red", linewidth = 3) +
+  labs(x = "Route distance (km)", y = NULL, title = "Percent trips switching from driving to cycling") +
+  scale_y_continuous(labels = scales::percent)
+tm_shape(zones_od) +
+  tm_fill(fill_alpha = 0.2, lwd = 0.1) +
+  tm_shape(route_network_scenario, is.main = TRUE) +
+  tm_lines(lwd = "bicycle", 
+           lwd.scale = tm_scale(values.scale = 1.5),
+           lwd.legend = tm_legend(title = "Number of bike trips per day\n(modeled, one direction)",
+                                  position = tm_pos_in("left", "top")),
+           col = "red")
+```
+
+Sieci transportowe z rekordami na poziomie segmentów, zazwyczaj z atrybutami takimi jak typ drogi i szerokość, stanowią powszechny typ sieci tras.
+Takie zbiory danych dotyczące sieci tras są dostępne na całym świecie w serwisie OpenStreetMap i można je pobrać za pomocą pakietów takich jak**osmdata**\\index{osmdata (package)}i**osmextract**\\index{osmextract (package)}.
+Aby zaoszczędzić czas potrzebny na pobranie i przygotowanie OSM\\index{OpenStreetMap}, użyjemyobiektu`bristol_ways`zpakietu**spDataLarge**,obiektu`sf`z geometriami LINESTRING i atrybutami reprezentującymi próbkę sieci transportowej w regionie objętym studium przypadku (szczegółowe informacjemożna znaleźćnastronie`?bristol_ways`), jak pokazano w poniższym wyniku:
+
+```{r 13-transport-22}
+summary(bristol_ways)
+```
+
+Wynik pokazuje, że`bristol_ways`reprezentuje nieco ponad 6000 segmentów sieci transportowej\\index{network}.
+Ta i inne sieci geograficzne mogą być reprezentowane jako wykresy matematyczne\\index{graph}, z węzłami\\index{node}w sieci, połączonymi krawędziami\\index{edge}.Opracowano
+szereg pakietów R do obsługi takich wykresów, w szczególności**igraph**\\index{igraph (package)}.
+Można ręcznie przekonwertować sieć tras naobiekt`igraph`, ale atrybuty geograficzne zostaną utracone.
+Aby przezwyciężyć to ograniczenie**igraph**, opracowano pakiet**sfnetworks**\\index{sfnetworks (package)} [@R-sfnetworks] .
+Reprezentuje on sieci jednocześnie jako wykresy*i*linie geograficzne i ma „uporządkowaną” składnię, jak pokazano w poniższym przykładzie.
+
+```{r 13-transport-23}
+bristol_ways$lengths = st_length(bristol_ways)
+ways_sfn = as_sfnetwork(bristol_ways)
+class(ways_sfn)
+```
+
+```{r 13-transport-23-2, eval=FALSE}
+ways_sfn
+#> # A sfnetwork with 5728 nodes and 4915 edges
+#> # A directed multigraph with 1013 components with spatially explicit edges
+#> # Node Data:     5,728 × 1 (active)
+#> # Edge Data:     4,915 × 7
+#>    from    to highway maxspeed ref                              geometry lengths
+#>   <int> <int> <fct>   <fct>    <fct>                    <LINESTRING [°]>     [m]
+#> 1     1     2 road    <NA>     B3130 (-2.61 51.4, -2.61 51.4, -2.61 51.…    218.
+#> # … 
+```
+
+Wynik poprzedniego fragmentu kodu (z końcowym wynikiem skróconym do ośmiu najważniejszych wierszy ze względu na ograniczenia przestrzenne) pokazuje,że`ways_sfn`jest obiektem złożonym, zawierającym zarówno węzły, jak i krawędzie w postaci graficznej i przestrzennej.
+`ways_sfn`należy do klasy`sfnetwork`, która opiera się naklasie`igraph`zpakietu**igraph**.
+W poniższym przykładzieobliczono„edge betweenness”\\index{edge}, czyli liczbę najkrótszych ścieżek\\index{shortest route}przechodzących przez każdą krawędź (więcej szczegółówmożna znaleźćnastronie`?igraph::betweenness`).
+Wynik obliczeń pośrednictwa krawędzi pokazano na rysunku @ref(fig:wayssln), na którymdla porównania nałożonozbiór danych sieci tras rowerowych obliczony za pomocąfunkcji`overline()`.
+Wyniki pokazują, że każda krawędź wykresu reprezentuje segment: segmenty w pobliżu centrum sieci drogowej mają najwyższe wartości pośrednictwa, natomiast segmenty bliższe centrum Bristolu mają większy potencjał rowerowy, na podstawie tych uproszczonych zbiorów danych.
+
+```{r wayssln-gen}
+ways_centrality = ways_sfn |> 
+  activate("edges") |>  
+  mutate(betweenness = tidygraph::centrality_edge_betweenness(lengths)) 
+```
+
+```{r wayssln, fig.cap="Route network datasets. The gray lines represent a simplified road network, with segment thickness proportional to betweenness. The green lines represent potential cycling flows (one way) calculated with the code above.", fig.scap="A small route network.", echo=FALSE}
+bb_wayssln = tmaptools::bb(route_network_scenario, xlim = c(0.1, 0.9), ylim = c(0.1, 0.6), relative = TRUE)
+tm_shape(zones_od) +
+  tm_fill(fill_alpha = 0.2, lwd = 0.1) +
+  tm_shape(ways_centrality |> st_as_sf(), bb = bb_wayssln, is.main = TRUE) +
+  tm_lines(lwd = "betweenness", 
+           lwd.scale = tm_scale(n = 2, values.scale = 2),
+           lwd.legend = tm_legend(title = "Betweenness"),
+           col = "#630032", col_alpha = 0.75) +
+  tm_shape(route_network_scenario) +
+  tm_lines(lwd = "bicycle",
+           lwd.scale = tm_scale(n = 2, values.scale = 2),
+           lwd.legend = tm_legend(title = "Number of bike trips (modeled, one direction)"),
+           col = "darkgreen", col_alpha = 0.75) +
+  tm_scalebar()
+```
+
+```{r 13-transport-24, eval=FALSE, echo=FALSE}
+# not producing groups of routes so removing for now...
+# m = igraph::clusters(ways_sfn@g)
+# igraph::V(ways_sfn@g)$m = m$membership
+# gdf = igraph::as_long_data_frame(ways_sfn@g)
+```
+
+Można również znaleźć najkrótszą trasę\\indeks{shortest route}między punktami początkowymi i docelowymi, korzystając z tej graficznej reprezentacji sieci tras za pomocąpakietu**sfnetworks**.
+
+<!-- TODO: jeśli czas pozwoli, przygotuj ćwiczenie na tej podstawie (RL 2022-07) -->
+
+Metody przedstawione w tej sekcji są stosunkowo proste w porównaniu z tym, co jest możliwe.
+Możliwości oferowane przez**sfnetworks**nie mogą zostać w pełni omówione w tej sekcji, ale stanowią one dobry punkt wyjścia do dalszych badań i eksploracji tego obszaru.
+Ostatnią kwestią jest to, że przykładowy zbiór danych, którego użyliśmy powyżej, jest stosunkowo niewielki.
+ Warto również rozważyć, w jaki sposób można dostosować tę pracę do większych sieci: pomocne będzie przetestowanie metod na podzbiorze danych i upewnienie się, że dysponujesz wystarczającą ilością pamięci RAM, ale warto również zbadać inne narzędzia do analizy sieci transportowych, które są zoptymalizowane pod kątem dużych sieci, takie jak R5 [@alessandretti_multimodal_2022] .
+
+## Priorytetowe traktowanie nowej infrastruktury
+
+W tej sekcji pokazujemy, w jaki sposób geokomputacja może przynieść wyniki istotne z punktu widzenia polityki w dziedzinie planowania transportu.
+Zidentyfikujemy obiecujące lokalizacje do inwestycji w zrównoważoną infrastrukturę transportową, stosując proste podejście do celów edukacyjnych.
+
+Zaletą podejścia opartego na danych, przedstawionego w tym rozdziale, jest jego modułowość: każdy aspekt może być przydatny sam w sobie i stanowić podstawę do szerszych analiz.
+Kroki, które doprowadziły nas do tego etapu, obejmowały identyfikację krótkich, ale zależnych od samochodu tras dojazdów do pracy (wygenerowanych na podstawie linii pożądanych) w sekcji @ref(trasy) oraz analizę charakterystyki sieci tras za pomocąpakietu**sfnetworks**w sekcji @ref(sieci tras).
+Ostatni fragment kodu w tym rozdziale łączy te wątki analizy, nakładając szacunki potencjału rowerowego z poprzedniej sekcji na nowy zbiór danych reprezentujący obszary w niewielkiej odległości od infrastruktury rowerowej.
+Ten nowy zbiór danych jest tworzony w poniższym fragmencie kodu, który: (1) odfiltrowuje elementy ścieżek rowerowych zobiektu`bristol_ways`reprezentującego sieć transportową, (2) „łączy” poszczególne elementy LINESTRING ścieżek rowerowych w jeden obiekt multilinestring (w celu przyspieszenia buforowania) oraz (3) tworzy wokół nich bufor 100 m w celu utworzenia wielokąta.
+
+```{r 13-transport-25}
+existing_cycleways_buffer = bristol_ways |> 
+  filter(highway == "cycleway") |>    # 1) filter out cycleways
+  st_union() |>                       # 2) unite geometries
+  st_buffer(dist = 100)               # 3) create buffer
+```
+
+Kolejnym etapem jest utworzenie zbioru danych reprezentującego punkty w sieci, w których istnieje duży potencjał rowerowy, ale niewiele udogodnień dla rowerzystów.
+
+```{r, echo=FALSE, eval=FALSE}
+waldo::compare(
+  sf::st_crs(route_network_scenario),
+  sf::st_crs(existing_cycleways_buffer)
+)
+```
+
+```{r 13-transport-26, eval=FALSE}
+route_network_no_infra = st_difference(
+  route_network_scenario,
+  route_network_scenario |> st_set_crs(st_crs(existing_cycleways_buffer)),
+  existing_cycleways_buffer
+)
+```
+
+```{r 13-transport-26-workaround, echo=FALSE}
+# TODO: remove this hidden chunk when rocker project updates PROJ version
+route_network_no_infra = st_difference(
+  # route_network_scenario,
+  # Temporary workaround, see https://github.com/geocompx/geocompr/issues/863:
+  route_network_scenario |> st_set_crs(st_crs(existing_cycleways_buffer)),
+  existing_cycleways_buffer
+)
+```
+
+Wyniki poprzednich fragmentów kodu przedstawiono na rysunku @ref(fig:cycleways), który pokazuje trasy o wysokim poziomie zależności od samochodów i dużym potencjale rowerowym, ale bez ścieżek rowerowych.
+
+```{r 13-transport-28, eval=FALSE}
+tmap_mode("view")
+qtm(route_network_no_infra, basemaps = leaflet::providers$Esri.WorldTopoMap,
+    lines.lwd = 5)
+```
+
+<!-- toDo: rl -->
+
+<!-- następny rysunek musi zostać zaktualizowany -->
+
+\`\`\`{r cycleways, echo=FALSE, message=FALSE, fig.cap="Potential routes along which to prioritize cycle infrastructure in Bristol to reduce car-dependency. The static map provides an overview of the overlay between existing infrastructure and routes with high car-bike switching potential (left). The screenshot the interactive map generated from the 
+ function highlights Whiteladies Road as somewhere that would benefit from a new cycleway (right).", out.width="50%", fig.show='hold', fig.scap="Routes along which to prioritize cycle infrastructure.", fig.height=9}`qtm()`
+
+# Poprzednia wersja:
+
+# source("code/13-cycleways.R")
+
+tm\_shape(existing\_cycleways\_buffer, bbox = bristol\_region) +
+tm\_polygons(fill = "lightgreen") +
+tm\_shape(route\_network\_scenario) +
+tm\_lines(lwd = "bicycle",
+lwd.scale = tm\_scale(values.scale = 3),
+lwd.legend = tm\_legend(title = "Liczba przejazdów rowerowych (modelowana, w jednym kierunku)"),
+position = tm\_pos\_out("center", "bottom"))
+knitr::include\_graphics("images/bristol\_cycleways\_zoomed.png")
+
+````
+
+The method has some limitations: in reality, people do not travel to zone centroids or always use the shortest route\index{shortest route} algorithm for a particular mode.
+However, the results demonstrate how geographic data analysis can be used to highlight places where new investment in cycleways could be particularly beneficial, despite the simplicity of the approach.
+The analysis would need to be substantially expanded --- including with larger input datasets --- to inform transport planning design in practice.
+
+## Future directions of travel
+
+This chapter provided a taste of the possibilities of using geocomputation for transport research, and it explored some key geographic elements that make-up a city's transport system with open data and reproducible code.
+The results could help plan where investment is needed.
+
+Transport systems operate at multiple interacting levels, meaning that geocomputational methods have great potential to generate insights into how they work, and the likely impacts of different interventions.
+There is much more that could be done in this area: it would be possible to build on the foundations presented in this chapter in many directions.
+Transport is the fastest growing source of greenhouse gas emissions in many countries, and it is set to become "the largest GHG emitting sector, especially in developed countries" (see [EURACTIV.com](https://www.euractiv.com/section/agriculture-food/opinion/transport-needs-to-do-a-lot-more-to-fight-climate-change/)).
+Transport-related emissions are unequally distributed across society but (unlike food and heating) are not essential for well-being.
+There is great potential for the sector to rapidly decarbonize through demand reduction, electrification of the vehicle fleet and the uptake of active travel modes such as walking and cycling.
+New technologies can reduce car-dependency by enabling more car sharing.
+'Micro-mobility' systems such as dockless bike and e-scooter schemes are also emerging, creating valuable datasets in the General Bikeshare Feed Specification (GBFS) format, which can be imported and processed with the [**gbfs**](https://github.com/simonpcouch/gbfs) package.
+These and other changes will have large impacts on accessibility, the ability of people to reach employment and service locations that they need, something that can be quantified currently and under scenarios of change with packages such as [**accessibility**](https://ipeagit.github.io/accessibility/) packages.
+Further exploration of such 'transport futures' at local, regional and national levels could yield important new insights.
+
+Methodologically, the foundations presented in this chapter could be extended by including more variables in the analysis.
+Characteristics of the route such as speed limits, busyness and the provision of protected cycling and walking paths could be linked to 'mode-split' (the proportion of trips made by different modes of transport).
+By aggregating OpenStreetMap\index{OpenStreetMap} data using buffers and geographic data methods presented in Chapters \@ref(attr) and \@ref(spatial-operations), for example, it would be possible to detect the presence of green space in close proximity to transport routes.
+Using R's\index{R} statistical modeling capabilities, this could then be used to predict current and future levels of cycling, for example.
+
+This type of analysis underlies the Propensity to Cycle Tool (PCT), a publicly accessible (see [www.pct.bike](https://www.pct.bike/)) mapping tool developed in R\index{R} that is being used to prioritize investment in cycling across England [@lovelace_propensity_2017].
+Similar tools could be used to encourage evidence-based transport policies related to other topics such as air pollution and public transport access around the world.
+
+## Exercises {#ex-transport}
+
+```{r, echo=FALSE, results='asis'}
+res = knitr::knit_child('_13-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+````
+
+

@@ -1,0 +1,468 @@
+# Skrypty, algorytmy i funkcje{#algorithms}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## Wymagania wstępne{-}
+
+Niniejszy rozdział ma minimalne wymagania dotyczące oprogramowania, ponieważ wykorzystuje głównie podstawowy pakiet R.
+Jedyniepakiet**sf**\\index{sf}jest używany do sprawdzania wyników algorytmu,który opracujemy w celu obliczenia pola powierzchni wielokątów.
+Jeśli chodzi o wiedzę wstępną, w niniejszym rozdziale zakładamy, że czytelnik rozumie klasy geograficzne przedstawione w rozdziale @ref(spatial-class) oraz sposób, w jaki można je wykorzystać do reprezentowania szerokiej gamy formatów plików wejściowych (patrz rozdział @ref(read-write)).
+
+## Wprowadzenie{#intro-algorithms}
+
+W rozdziale @ref(intro) ustalono, że geocomputation nie polega wyłącznie na wykorzystaniu istniejących narzędzi, ale także na opracowywaniu nowych, „w postaci udostępnianych skryptów i funkcji R”.
+W niniejszym rozdziale omówiono elementy składowe kodu, który można odtworzyć.
+Przedstawiono również algorytmy geometryczne niskiego poziomu, takie jak te wykorzystane w rozdziale @ref(gis).
+Zapoznanie się z nimi powinno pomóc w zrozumieniu działania takich algorytmów oraz w pisaniu kodu, który może być wielokrotnie wykorzystywany przez wiele osób w odniesieniu do wielu zestawów danych.Samo
+przeczytanie tego rozdziału nie sprawi, że staniesz się wykwalifikowanym programistą.
+ Programowanie jest trudne i wymaga dużo praktyki [@abelson_structure_1996]:
+
+> Aby docenić programowanie jako samodzielną działalność intelektualną, musisz zająć się programowaniem komputerowym; musisz czytać i pisać programy komputerowe — wiele programów.
+
+Istnieją ważne powody, dla których warto nauczyć się programować.
+Chociaż niniejszy rozdział nie uczy samego programowania — zobacz zasoby takie jak @wickham\_advanced\_2019, @gillespie\_efficient\_2016 i @xiao\_gis\_2016, które uczą programowania w języku R i innych językach — to jednak zawiera kilka punktów wyjścia, skupionych na danych geometrycznych, które mogą stanowić dobrą podstawę do rozwijania umiejętności programowania.
+
+Rozdział ten pokazuje również i podkreśla znaczenie odtwarzalności\\index{reproducibility}.
+Zalety odtwarzalności wykraczają poza umożliwienie innym powtórzenia Twojej pracy:kod
+odtwarzalny jest często lepszy pod każdym względem niż kod napisany do jednorazowego uruchomienia, w tym pod względem wydajności obliczeniowej, „skalowalności” (zdolności kodu do działania na dużych zbiorach danych) oraz łatwości dostosowywania i utrzymania.
+
+Skrypty są podstawą powtarzalnego kodu R, temat ten został omówiony w sekcji @ref(scripts).
+Algorytmy są przepisami na modyfikowanie danych wejściowych za pomocą serii kroków, w wyniku których powstaje dane wyjściowe, jak opisano w sekcji @ref(geometric-algorithms).
+Aby ułatwić udostępnianie i powtarzalność, algorytmy można umieścić w funkcjach.Jest
+to temat sekcji @ref(functions).
+Przykład znalezienia środka ciężkości\\index{centroid}wielokąta zostanie wykorzystany do połączenia tych pojęć.
+W rozdziale @ref(geometry-operations) przedstawiono jużfunkcjęśrodka ciężkości\\index{centroid}`st_centroid()` , ale ten przykład pokazuje, jak pozornie proste operacje są wynikiem stosunkowo złożonego kodu, potwierdzając następującą obserwację [@wise_gis_2001]:
+
+> Jedną z najbardziej intrygujących cech problemów związanych z danymi przestrzennymi jest to, że rzeczy, które wydają się banalnie proste dla człowieka, mogą być zaskakująco trudne dla komputera.
+
+Przykład ten odzwierciedla również drugorzędny cel rozdziału, który zgodnie z @xiao\_gis\_2016 polega na „niepowielaniu tego, co jest już dostępne, ale pokazaniu, jak to działa”.
+
+## Skrypty
+
+Jeśli funkcje dystrybuowane w pakietach są elementami składowymi kodu R, skrypty są spoiwem, które je łączy.
+Skrypty powinny być przechowywane i wykonywane w logicznej kolejności,aby tworzyć powtarzalne przepływy pracy\\index{reproducibility}, ręcznie lub za pomocą narzędzi do automatyzacji przepływu pracy, takich jak**cele** [@landau_targets_2021] .
+Jeśli dopiero zaczynasz przygodę z programowaniem, skrypty mogą wydawać się onieśmielające, gdy spotykasz się z nimi po raz pierwszy, ale są to po prostu zwykłe pliki tekstowe.
+Skrypty są zazwyczaj zapisywane jako pliki z rozszerzeniem odpowiadającym językowi, w którym zostały napisane, np.`.py`dla skryptów napisanych w języku Python lub`.rs`dla skryptów napisanych w języku Rust.
+Skrypty R powinny być zapisywane zrozszerzeniem`.R`i nazywane tak, aby odzwierciedlały ich działanie.
+Przykładem jestplik[`11-hello.R`](https://github.com/geocompx/geocompr/blob/main/code/11-hello.R), skrypt przechowywany wfolderze[`code`](https://github.com/geocompx/geocompr/tree/main/code/)repozytorium książki.
+`11-hello.R`to prosty skrypt zawierający tylko dwie linijki kodu, z których jedna jest komentarzem:
+
+```r
+# Aim: provide a minimal R script
+print("Hello geocompr")
+```
+
+Zawartość tego skryptu nie jest szczególnie ekscytująca, ale pokazuje sedno sprawy: skrypty nie muszą być skomplikowane.
+Zapisane skrypty można wywoływać i wykonywać w całości z wiersza poleceń R za pomocąfunkcji`source()`, jak pokazano poniżej.
+Wynik tego polecenia pokazuje, że komentarz jest ignorowany, alepolecenie`print()`jest wykonywane:
+
+```{r 10-algorithms-1}
+source("code/11-hello.R")
+```
+
+Skrypty R można również wywoływać z powłok systemowych, takich jak`bash`i`PowerShell`, w następujący sposób:
+
+```bash
+Rscript code/11-hello.R
+```
+
+Jeśli plikwykonywalny`RScript`jest[skonfigurowany](https://www.reddit.com/r/Rlanguage/comments/zaovly/is_anybody_able_to_run_a_r_script_in_powershell/)tak, aby był dostępny, powyższe polecenie wyświetli`Hello geocompr`w powłoce systemowej.
+Nie ma ścisłych zasad dotyczących tego, co można, a czego nie można umieszczać w plikach skryptowych, i nic nie stoi na przeszkodzie, aby zapisywać uszkodzony, niemożliwy do odtworzenia kod, dlatego testowanie jest ważne.
+Wiersze kodu, które nie zawierają prawidłowego R, należy skomentować, dodającna początku wierszaznak`#`, aby zapobiec błędom, jak pokazano w wierszu 1skryptu`11-hello.R`.
+Warto przestrzegać kilku podstawowych zasad:
+
+- Napisz skrypt w odpowiedniej kolejności: podobnie jak scenariusz filmu, skrypty powinny mieć jasną strukturę, np. „konfiguracja”, „przetwarzanie danych” i „zapisywanie wyników” (co w przybliżeniu odpowiada „początkowi”, „środkowej części” i „końcowi” filmu).
+- Dodaj komentarze do skryptu, aby inne osoby (i Ty sam w przyszłości) mogły go zrozumieć: komentarz powinien zawierać co najmniej opis celu skryptu (patrz rysunek @ref(fig:codecheck)) oraz (w przypadku długich skryptów) podzielić go na sekcje.
+  Można to zrobić w RStudio\\index{RStudio}, na przykład za pomocą skrótu`Ctrl+Shift+R`, który tworzy „składane” nagłówki sekcji kodu
+- . Przede wszystkim skrypty powinny być powtarzalne: samodzielne skrypty, które będą działać na każdym komputerze, są bardziej przydatne niż skrypty, które działają tylko na Twoim komputerze, w dobrym dniu.Wymaga
+  to dołączenia wymaganych pakietów na początku, wczytania danych ze stałych źródeł (takich jak wiarygodna strona internetowa) i upewnienia się, że poprzednie kroki zostały wykonane.^\[
+  Poprzednie kroki można odwołać za pomocą komentarza lub instrukcji if, takiej jak`if (!exists("x")) source("x.R")`(która uruchomi plik skryptu`x.R`, jeśli obiekt`x`nie istnieje).
+  \]
+
+Jeśli nie uporządkujesz swojego kodu w pakiet, trudno będzie zapewnić powtarzalność skryptów R, ale istnieją narzędzia, które mogą w tym pomóc.
+Domyślnie RStudio \\index{RStudio}„sprawdza” skrypty R i podkreśla błędny kod czerwoną falistą linią, jak pokazano na rysunku @ref(fig:codecheck).
+Pakiet**reprex**jest kolejnym narzędziem, które może pomóc w odtwarzalności.
+
+```{r codecheck, echo=FALSE, fig.cap="Code checking in RStudio. This example, from the script 11-centroid-alg.R, highlights an unclosed curly bracket on line 19.", fig.scap="Illustration of 'code checking' in RStudio."}
+knitr::include_graphics("images/codecheck.png")
+```
+
+```{block2 spellcheck, type="rmdnote"}
+A useful tool for reproducibility is the **reprex** package.
+Its main function `reprex()` tests lines of R code to check if they are reproducible, and it generates markdown output to facilitate communication on sites such as GitHub.
+See the webpage reprex.tidyverse.org for details.
+```
+
+\\index{reproducibility}
+Treść tej sekcji dotyczy każdego typu skryptu R.
+Szczególną uwagę w przypadku skryptów do obliczeń geograficznych należy zwrócić na to, że często mają one zależności zewnętrzne, takie jak zależność GDAL potrzebna do podstawowych pakietów R do pracy z danymi geograficznymi, z których intensywnie korzystaliśmy w rozdziale @ref(read-write) do importu i eksportu danych.Zależności
+oprogramowania GIS mogą być potrzebne do uruchamiania bardziej specjalistycznych algorytmów geograficznych, jak opisano w rozdziale @ref(gis).
+Skrypty do pracy z danymi geograficznymi często wymagają również, aby zestawy danych wejściowych były dostępne w określonych formatach.
+Takie zależności należy wymienić w komentarzach lub w odpowiednim miejscu w projekcie, którego są częścią, lub opisać jako zależności za pomocą narzędzi takich jakpakiet**renv**lub Docker.
+
+Techniki programowania „defensywnego
+
+”
+
+i dobre komunikaty o błędach mogą zaoszczędzić czas, sprawdzając zależności i komunikując się z użytkownikami, jeśli pewne wymagania nie są spełnione.
+Instrukcje if, zaimplementowane za pomocą`if ()`w języku R, mogą być używane do wysyłania komunikatów lub uruchamiania linii kodu, jeśli i tylko jeśli spełnione są określone warunki.Na przykład
+poniższe linie kodu wysyłają komunikat do użytkowników, jeśli brakuje określonego pliku:
+
+```{r}
+if (!file.exists("required_geo_data.gpkg")) {
+  message("No file, required_geo_data.gpkg is missing!")
+} 
+```
+
+Praca wykonywana przezskrypt`11-centroid-alg.R`jest pokazana w poniższym przykładzie, który tworzy obiekt o nazwie`poly_mat`, reprezentujący kwadrat o bokach o długości 9 jednostek.
+Ten przykład pokazuje, że`source()`działa z adresami URL, zakładając, że masz połączenie z Internetem.
+Jeśli nie masz połączenia, ten sam skrypt można wywołać za pomocą`source("code/11-centroid-alg.R")`, zakładając, że wcześniej pobrałeśrepozytorium[github.com/geocompx/geocompr](https://github.com/geocompx/geocompr)i uruchamiasz R zfolderu`geocompr`.
+
+```{r 10-algorithms-2, eval=FALSE}
+poly_mat = cbind(
+  x = c(0, 9, 9, 0, 0),
+  y = c(0, 0, 9, 9, 0)
+)
+# Short URL to code/11-centroid-alg.R in the geocompr repo
+source("https://t.ly/0nzj")
+```
+
+```{r 10-algorithms-3, echo=FALSE, fig.show="hide"}
+poly_mat = cbind(
+  x = c(0, 9, 9, 0, 0),
+  y = c(0, 0, 9, 9, 0)
+)
+if (curl::has_internet()) {
+  source("https://raw.githubusercontent.com/geocompx/geocompr/main/code/11-centroid-alg.R")
+  } else {
+  source("code/11-centroid-setup.R")
+  }
+```
+
+## Algorytmy geometryczne
+
+Algorytmy\\index{algorithm}można rozumieć jako komputerowy odpowiednik przepisu na ciasto.Są
+one kompletnym zestawem instrukcji, które po zastosowaniu do danych wejściowych dają użyteczne/smaczne wyniki.
+Dane wejściowe to składniki, takie jak mąka i cukier w przypadku pieczenia, dane i parametry wejściowe w przypadku algorytmów.
+Podczas gdy smaczne ciasta mogą być wynikiem przepisu na ciasto, skuteczne algorytmy powinny dawać wyniki obliczeniowe przynoszące korzyści środowiskowe/społeczne/inne.
+Zanim przejdziemy do przykładu, który można powtórzyć, poniższa krótka historia pokazuje, jak algorytmy odnoszą się do skryptów (omówionych w sekcji @ref(scripts)) i funkcji (które można wykorzystać do uogólnienia algorytmów i uczynienia ich bardziej przenośnymi i łatwymi w użyciu, jak zobaczymy w sekcji @ref(functions)).
+
+Słowo „algorytm”\\index{algorithm}pochodzi z publikacji wczesnego podręcznika matematyki w Bagdadzie w 825 roku.
+Książka została przetłumaczona na łacinę i stała się tak popularna, że nazwisko autora,[al-Khwārizmī](https://en.wikipedia.org/wiki/Muhammad_ibn_Musa_al-Khwarizmi) , „zostało uwiecznione jako termin naukowy: Al-Khwarizmi stało się Alchoarismi, Algorismi i ostatecznie algorytmem” [@bellos_alex_2011] .
+W erze komputerów algorytm\\index{algorithm}odnosi się do serii kroków,które rozwiązują problem, dając w rezultacie z góry określony wynik.
+ Dane wejściowe muszą być formalnie zdefiniowane w odpowiedniej strukturze danych [@wise_gis_2001] .
+Algorytmy często zaczynają się od schematów blokowych lub pseudokodu\\index{pseudocode}pokazujących cel procesu przed wdrożeniem go w kodzie.
+Aby ułatwić użytkowanie, popularne algorytmy są często pakowane w funkcje, które mogą ukrywać niektóre lub wszystkie podejmowane kroki (chyba że spojrzysz na kod źródłowy funkcji, zobacz sekcję @ref(functions)).
+
+Geoalgorytmy\\index{geoalgorithm}, takie jak te, z którymi zetknęliśmy się w rozdziale @ref(gis), to algorytmy, które przyjmują dane geograficzne i zazwyczaj zwracają wyniki geograficzne (alternatywne terminy oznaczające to samo to*algorytmy GIS*i*algorytmy geometryczne*).
+Może to brzmieć prosto, ale jest to głęboka dziedzina, której poświęcona jestcała gałąź nauki,*geometria obliczeniowa* , [@berg_computational_2008] oraz liczne książki na ten temat.
+@orourke\_computational\_1998, na przykład, wprowadza ten temat za pomocą szeregu coraz trudniejszych algorytmów geometrycznych, wykorzystujących powtarzalny i ogólnodostępny kod C.
+
+Przykładem algorytmu geometrycznego jest algorytm znajdujący centroid\\index{centroid}wielokąta.
+Istnieje wiele podejść doobliczaniaśrodka ciężkości\\index{centroid}, z których niektóre działają tylko w przypadku określonych typów[danych](https://en.wikipedia.org/wiki/Centroid)[przestrzennych](https://en.wikipedia.org/wiki/Centroid).
+Na potrzeby tej sekcji wybieramy podejście, które jest łatwe do wizualizacji: podzielenie wielokąta na wiele trójkątów i znalezienie środka ciężkości\\index{centroid} każdego z nich. Podejście to zostało omówione w @kaiser_algorithms_1993 wraz z innymi algorytmami środka ciężkości [i krótko wspomniane w @orourke_computational_1998] .
+Przed napisaniem kodu warto podzielić to podejście na odrębne zadania (zwane dalej krokami od 1 do 4, które można również przedstawić w formie schematu lub pseudokodu\\index{pseudocode}):
+
+1. Podzielić wielokąt na sąsiadujące trójkąty
+2. Znaleźć centroid\\index{centroid}każdego trójkąta
+3. Znaleźć pole każdego trójkąta
+4. Znaleźć średnią ważoną polem centroidów trójkątów\\index{centroid}
+
+Kroki te mogą wydawać się proste, ale przekształcenie słów w działający kod wymaga pewnego nakładu pracy i wielu prób i błędów, nawet jeśli dane wejściowe są ograniczone:
+Algorytm będzie działał tylko dla*wielokątów wypukłych*, które nie zawierają kątów wewnętrznych większych niż 180°, nie są dozwolone kształty gwiaździste (pakiety**decido**i**sfdct**mogą triangulować wielokąty niewypukłe przy użyciu bibliotek zewnętrznych, jak pokazano w[algorytmie](https://geocompx.github.io/geocompkg/articles/algorithm.html)vignette hostowanym na[geocompx.org](https://geocompx.org/)).
+
+Najprostszą strukturą danych reprezentującą wielokąt jest macierz współrzędnych x i y, w której każdy wiersz reprezentuje wierzchołek śledzący granicę wielokąta w kolejności, w której pierwszy i ostatni wiersz są identyczne [@wise_gis_2001] .
+W tym przypadku utworzymy wielokąt z pięcioma wierzchołkami w podstawowym R, opierając się na przykładzie z*GIS Algorithms*\[@xiao\_gis\_2016 zobacz[github.com/gisalgs](https://github.com/gisalgs/geom)dla kodu Python\], jak pokazano na rysunku @ref(fig:polymat):
+
+```{r centroid-setup, echo=FALSE, eval=FALSE}
+# show where the data came from:
+source("code/11-centroid-setup.R")
+```
+
+```{r 10-algorithms-4}
+# generate a simple matrix representation of a polygon:
+x_coords = c(10, 20, 12, 0, 0, 10)
+y_coords = c(0, 15, 20, 10, 0, 0)
+poly_mat = cbind(x_coords, y_coords)
+```
+
+Teraz, gdy mamy już przykładowy zbiór danych, możemy przystąpić do wykonania kroku 1 opisanego powyżej.Poniższy
+kod pokazuje, jak można to zrobić, tworząc pojedynczy trójkąt (`T1`), który ilustruje tę metodę; pokazuje on również krok 2, obliczając jego centroid\\index{centroid}na podstawie[wzoru](https://math.stackexchange.com/a/1702606)$1/3(a + b + c)$, gdzie$a$do$c$są współrzędnymi reprezentującymi wierzchołki trójkąta:
+
+```{r 10-algorithms-5}
+# create a point representing the origin:
+Origin = poly_mat[1, ]
+# create 'triangle matrix':
+T1 = rbind(Origin, poly_mat[2:3, ], Origin) 
+C1 = (T1[1,] + T1[2,] + T1[3,]) / 3
+```
+
+```{r, echo=FALSE}
+# (Note: drop = FALSE preserves classes, resulting in a matrix):
+C1_alternative = (T1[1, , drop = FALSE] + T1[2, , drop = FALSE] + T1[3, , drop = FALSE]) / 3
+```
+
+
+
+```{r polymat, echo=FALSE, fig.cap="Polygon centroid calculation problem.", fig.height="100", warning=FALSE}
+# initial plot: can probably delete this:
+old_par = par(pty = "s") 
+plot(poly_mat, cex = 3)
+lines(poly_mat, lwd = 7)
+lines(T1, col = "#fa8072", lwd = 2)
+text(x = C1[1], y = C1[2], "C1", col = "#fa8072")
+par(old_par)
+```
+
+Krok 3 polega na obliczeniu pola każdego trójkąta, tak abyuwzględnić*średnią**ważoną*,uwzględniającą nieproporcjonalny wpływ dużych trójkątów.
+ Wzór na obliczenie pola trójkąta jest następujący [@kaiser_algorithms_1993]:
+
+$$
+\frac{A_x ( B_y − C_y ) + B_x ( C_y − A_y ) + C_x ( A_y − B_y )}{ 2 }
+$$
+
+Gdzie$A$do$C$to trzy punkty trójkąta, a$x$i$y$odnoszą się do wymiarów x i y.
+Przekształcenie tego wzoru na kod R, który działa z danymi w macierzowej reprezentacji trójkąta`T1`, jest następujące (funkcja`abs()`zapewnia wynik dodatni):
+
+```{r 10-algorithms-6}
+# calculate the area of the triangle represented by matrix T1:
+abs(T1[1, 1] * (T1[2, 2] - T1[3, 2]) +
+    T1[2, 1] * (T1[3, 2] - T1[1, 2]) +
+    T1[3, 1] * (T1[1, 2] - T1[2, 2])) / 2
+```
+
+Ten fragment kodu daje prawidłowy wynik.^\[
+Wynik można zweryfikować za pomocą następującego wzoru (który zakłada poziomą podstawę):
+pole powierzchni wynosi połowę szerokości podstawy pomnożonej przez wysokość,$A = B * H / 2$.
+W tym przypadku$10 * 10 / 2 = 50$.
+\]
+Problem polega na tym, że kod jest nieporęczny i trzeba go ponownie wpisać, jeśli chcemy uruchomić go na innej macierzy trójkąta.
+Aby uczynić kod bardziej ogólnym, w sekcji @ref(functions) zobaczymy, jak można go przekształcić w funkcję.
+
+Krok 4 wymaga wykonania kroków 2 i 3 nie tylko na jednym trójkącie (jak pokazano powyżej), ale na wszystkich trójkątach.
+Wymaga to*iteracji*w celu utworzenia wszystkich trójkątów reprezentujących wielokąt, jak pokazano na rysunku @ref(fig:polycent).
+`lapply()`\\index{loop!lapply}i`vapply()`\\index{loop!vapply}są używane do iteracji nad każdym trójkątem, ponieważ zapewniają zwięzłe rozwiązanie w podstawowym R:^\[Dokumentacjaznajduje sięna stronie
+`?lapply`, a więcej informacji na temat iteracji można znaleźć w rozdziale @ref(location).
+\]
+
+```{r 10-algorithms-7}
+i = 2:(nrow(poly_mat) - 2)
+T_all = lapply(i, function(x) {
+  rbind(Origin, poly_mat[x:(x + 1), ], Origin)
+})
+
+C_list = lapply(T_all,  function(x) (x[1, ] + x[2, ] + x[3, ]) / 3)
+C = do.call(rbind, C_list)
+
+A = vapply(T_all, function(x) {
+  abs(x[1, 1] * (x[2, 2] - x[3, 2]) +
+        x[2, 1] * (x[3, 2] - x[1, 2]) +
+        x[3, 1] * (x[1, 2] - x[2, 2]) ) / 2
+  }, FUN.VALUE = double(1))
+```
+
+```{r polycent, fig.cap="Iterative centroid algorithm with triangles. The X represents the area-weighted centroid in iterations 2 and 3.", fig.scap="Illustration of iterative centroid algorithm with triangles.", echo=FALSE, fig.asp=0.3}
+# idea: show animated version on web version
+source("code/11-polycent.R")
+```
+
+Jesteśmy teraz w stanie wykonać krok 4, aby obliczyć całkowitą powierzchnię za pomocą`sum(A)`orazwspółrzędneśrodka ciężkości\\index{centroid}wielokąta za pomocą`weighted.mean(C[, 1], A)`i`weighted.mean(C[, 2], A)`(ćwiczenie dla uważnych czytelników: sprawdź, czy te polecenia działają).
+Aby zademonstrować powiązanie między algorytmami\\index{algorithm}a skryptami, treść tej sekcji została skondensowana w`11-centroid-alg.R`.
+Na końcu sekcji @ref(scripts) widzieliśmy, jak ten skrypt może obliczyć centroid\\index{centroid}kwadratu.Wielką zaletą*skryptowania*
+algorytmu jest to, że działa on na nowymobiekcie`poly_mat`(zobacz ćwiczenia poniżej, aby zweryfikować te wyniki w odniesieniu do`st_centroid()`):
+
+```{r 10-algorithms-8}
+source("code/11-centroid-alg.R")
+```
+
+Powyższy przykład pokazuje, że operacje geograficzne niskiego poziomu*można*opracować od podstaw przy użyciu podstawowego języka R.
+Pokazuje również, że jeśli istnieje już sprawdzone rozwiązanie, nie warto odkrywać Ameryki na nowo:
+gdybyśmy chcieli jedynie znaleźć centroid\\index{centroid}wielokąta, szybciej byłoby przedstawić`poly_mat`jakoobiekt**sf**i użyć istniejącejfunkcji`sf::st_centroid()`.
+Jednak wielką zaletą pisania algorytmów od podstaw jest to, że rozumiesz każdy etap procesu, czego nie można zagwarantować w przypadku korzystania z kodu innych osób.
+Kolejną kwestią jest wydajność: R może być powolny w porównaniu z językami niskiego poziomu, takimi jak C++{C++},jeśli chodzi o przetwarzanie danych liczbowych (patrz sekcja @ref(software-for-geocomputation)), a optymalizacja jest trudna.
+Jeśli celem jest opracowanie nowych metod, nie należy priorytetowo traktować wydajności obliczeniowej.
+ Odzwierciedla to powiedzenie „przedwczesna optymalizacja jest źródłem wszelkiego zła (a przynajmniej większości zła) w programowaniu” [@knuth_computer_1974] .
+
+Opracowaniealgorytmu\\index{algorithm}jest trudne.
+Świadczy o tym ilość pracy, jaką włożono w opracowaniealgorytmu centroid\\index{centroid}algorytmu\\index{algorithm}w podstawowym R\\index{R}, który jest tylko jednym, raczej nieefektywnym podejściem do problemu o ograniczonych zastosowaniach w świecie rzeczywistym (w praktyce wielokąty wypukłe są rzadkością).
+Doświadczenie to powinno prowadzić do docenienia bibliotek geograficznych niskiego poziomu, takich jak GEOS\\index{GEOS}i CGAL\\index{CGAL}(Computational Geometry Algorithms Library), które nie tylko działają szybko, ale także obsługują szeroki zakres typów geometrii wejściowej.Ogromną zaletą otwartego
+charakteru takich bibliotek jest to, że ich kod źródłowy\\index{source code}jest łatwo dostępny do studiowania, zrozumienia i (dla osób posiadających odpowiednie umiejętności i pewność siebie) modyfikacji.^\[
+Funkcja CGAL\\index{CGAL}`CGAL::centroid()`składa się w rzeczywistości z siedmiu podfunkcji opisanych na stronie https://doc.cgal.org/latest/Kernel\_23/group\_\_centroid\_\_grp.html, co pozwala jej działać na szerokiej gamie typów danych wejściowych, podczas gdy rozwiązanie, które stworzyliśmy, działa tylko na bardzo specyficznym typie danych wejściowych.
+Kod źródłowyfunkcjiGEOS\\index{GEOS}`Centroid::getCentroid()`można znaleźć pod adresem https://github.com/libgeos/geos/search?q=getCentroid
+.
+
+## Funkcje
+
+Podobnie jak algorytmy\\index{algorithm}, funkcje przyjmują dane wejściowe i zwracają dane wyjściowe.
+Funkcje\\index{function}odnoszą się jednak do implementacji w konkretnym języku programowania, a nie do samej „receptury”.
+W języku R funkcje\\index{function}są obiektami samymi w sobie, które można tworzyć i łączyć w sposób modułowy.
+Możemy na przykład utworzyć funkcję, która wykonuje krok 2 naszegoalgorytmu generowaniacentroidów\\index{centroid}algorithm\\index{algorithm}w następujący sposób:
+
+```{r 10-algorithms-9}
+t_centroid = function(x) {
+  (x[1, ] + x[2, ] + x[3, ]) / 3
+}
+```
+
+Powyższy przykład ilustruje dwa kluczowe elementy[funkcji](https://adv-r.hadley.nz/functions.html): (1)*treść*funkcji, czyli kod zawarty w nawiasach klamrowych, który określa, co funkcja robi z danymi wejściowymi; oraz (2)*argumenty*, czyli lista argumentów, z którymi pracuje funkcja —w tym przypadku`x`(trzeci kluczowy element, środowisko, wykracza poza zakres tej sekcji).
+Domyślnie funkcje zwracają ostatni obliczony obiekt (współrzędne centroidu\\index{centroid}w przypadku`t_centroid()`).^\[
+Można również jawnie ustawić wynik funkcji,dodając`return(output)`do treści funkcji, gdzie`output`jest wynikiem, który ma zostać zwrócony.
+\]
+
+```{r 10-algorithms-10, eval=FALSE, echo=FALSE}
+body(t_centroid)
+formals(t_centroid)
+environment(t_centroid)
+```
+
+Funkcja działa teraz na wszystkich przekazanych jej danych wejściowych, jak pokazano w poniższym poleceniu, które oblicza pole powierzchni pierwszego trójkąta z przykładowego wielokąta z poprzedniej sekcji (patrz rysunek @ref(fig:polycent)).
+
+```{r 10-algorithms-11}
+t_centroid(T1)
+```
+
+Możemy również utworzyć funkcję\\index{function}do obliczania pola powierzchni trójkąta, którą nazwiemy`t_area()`:
+
+```{r 10-algorithms-12}
+t_area = function(x) {
+  abs(
+    x[1, 1] * (x[2, 2] - x[3, 2]) +
+    x[2, 1] * (x[3, 2] - x[1, 2]) +
+    x[3, 1] * (x[1, 2] - x[2, 2])
+  ) / 2
+}
+```
+
+Należy zauważyć, że po utworzeniu funkcji pole powierzchni trójkąta można obliczyć w jednej linii kodu, unikając powielania rozbudowanego kodu:
+funkcje są mechanizmem*uogólniającym*kod.
+Nowo utworzona funkcja\\index{function}`t_area()`przyjmuje dowolny obiekt`x`, zakładając, że ma on takie same wymiary jak struktura danych „macierzy trójkąta”, której używaliśmy, i zwraca jego pole powierzchni, jak pokazano na`T1`w następujący sposób:
+
+```{r 10-algorithms-13}
+t_area(T1)
+```
+
+Możemy przetestować uogólnialność funkcji\\index{function}, używając jej do obliczenia pola powierzchni nowej macierzy trójkąta, która ma wysokość 1 i podstawę 3:
+
+```{r 10-algorithms-14}
+t_new = cbind(x = c(0, 3, 3, 0),
+              y = c(0, 0, 1, 0))
+t_area(t_new)
+```
+
+Przydatną cechą funkcji jest ich modułowość.
+Jeśli znamy wynik, jedna funkcja może służyć jako element składowy innej.
+W ten sposób funkcje`t_centroid()`i`t_area()`mogą służyć jako podkomponenty większej funkcji\\index{function}do wykonania zadania skryptu`11-centroid-alg.R`: obliczenia pola dowolnego wielokąta wypukłego.Poniższy
+fragment kodu tworzy funkcję`poly_centroid()`naśladującą zachowanie`sf::st_centroid()`dla wielokątów wypukłych.^\[
+Należy zauważyć, że utworzone przez nas funkcje są wywoływane iteracyjnie w`lapply()`\\index{loop!lapply}i`vapply()`\\index{loop!vapply}wywołaniach funkcji.
+\]
+
+```{r 10-algorithms-15}
+poly_centroid = function(poly_mat) {
+  Origin = poly_mat[1, ] # create a point representing the origin
+  i = 2:(nrow(poly_mat) - 2)
+  T_all = lapply(i, function(x) {rbind(Origin, poly_mat[x:(x + 1), ], Origin)})
+  C_list = lapply(T_all, t_centroid)
+  C = do.call(rbind, C_list)
+  A = vapply(T_all, t_area, FUN.VALUE = double(1))
+  c(weighted.mean(C[, 1], A), weighted.mean(C[, 2], A))
+}
+```
+
+```{r 10-algorithms-16, echo=FALSE, eval=FALSE}
+# a slightly more complex version of the function with output set
+poly_centroid = function(poly_mat, output = "matrix") {
+  Origin = poly_mat[1, ] # create a point representing the origin
+  i = 2:(nrow(poly_mat) - 2)
+  T_all = T_all = lapply(i, function(x) {
+    rbind(Origin, poly_mat[x:(x + 1), ], Origin)
+  })
+  C_list = lapply(T_all, t_centroid)
+  C = do.call(rbind, C_list)
+  A = vapply(T_all, t_area, FUN.VALUE = double(1))
+  centroid_coords = c(weighted.mean(C[, 1], A), weighted.mean(C[, 2], A))
+  if (output == "matrix") {
+    return(centroid_coords)
+  } else if (output == "area")
+    return(sum(A))
+}
+```
+
+```{r 10-algorithms-17}
+poly_centroid(poly_mat)
+```
+
+Funkcje\\index{function}, takie jak`poly_centroid()`, mogą być dalej rozszerzane, aby zapewnić różne typy wyników.
+Aby zwrócić wynik jako obiekt klasy`sfg`, można na przykład użyć funkcji „opakowującej” do zmodyfikowania wyniku`poly_centroid()`przed zwróceniem wyniku:
+
+```{r 10-algorithms-18}
+poly_centroid_sfg = function(x) {
+  centroid_coords = poly_centroid(x)
+  sf::st_point(centroid_coords)
+}
+```
+
+Możemy sprawdzić
+
+,
+
+czy wynik jest taki sam jak wynik z`sf::st_centroid()`w następujący sposób:
+
+```{r 10-algorithms-19}
+poly_sfc = sf::st_polygon(list(poly_mat))
+identical(poly_centroid_sfg(poly_mat), sf::st_centroid(poly_sfc))
+```
+
+## Programowanie
+
+W tym rozdziale szybko przeszliśmy od skryptów do funkcji, omijając trudny temat algorytmów\\index{algorithm}.
+Nie tylko omówiliśmy je w sposób abstrakcyjny, ale także stworzyliśmy działające przykłady każdego z nich, aby rozwiązać konkretny problem:
+
+- Skrypt`11-centroid-alg.R`został wprowadzony i zademonstrowany na „macierzy wielokątów”.
+- Poszczególne kroki, które umożliwiły działanie tego skryptu, zostały opisane jako algorytm\\index{algorithm}, czyli przepis obliczeniowy.
+- Aby uogólnić algorytm, przekształciliśmy go w funkcje modułowe, które ostatecznie zostały połączone w celu utworzenia funkcji`poly_centroid()`w poprzedniej sekcji.
+
+Każda z tych czynności może wydawać się prosta.
+Jednak umiejętne programowanie jest złożone i wymaga*połączenia*wszystkich elementów — skryptów, algorytmów i funkcji — w jeden*system*, charakteryzujący się wydajnością i stylem.
+Efektem powinny być solidne i przyjazne dla użytkownika narzędzia, z których mogą korzystać inni ludzie.
+Jeśli jesteś nowicjuszem w programowaniu, a zakładamy, że większość osób czytających tę książkę właśnie nią jest, to umiejętność zrozumienia i odtworzenia wyników przedstawionych w poprzednich sekcjach jest dużym osiągnięciem.
+Programowanie wymaga wielu godzin poświęconych na naukę i praktykę, zanim osiągniesz biegłość.
+
+Wyzwanie stojące przed programistami, którzy chcą wdrożyć nowe algorytmy\\index{algorithm}w efektywny sposób, można spojrzeć z odpowiedniej perspektywy, biorąc pod uwagę ilość pracy, jaką włożono w stworzenie prostej funkcji, która nie jest przeznaczona do użytku w produkcji: w obecnym stanie`poly_centroid()`nie działa na większości (nie wypukłych) wielokątów!
+Rodzi to pytanie: jak uogólnić tę funkcję?
+Dwie opcje to (1) znalezienie sposobów triangulacji wielokątów niekonweksowych (temat omówiony wartykule[Algorithms Extended](https://geocompx.github.io/geocompkg/articles/algorithm.html)opublikowanym wserwisiegeocompx.github.io/geocompkg/articles/) oraz (2) zbadanie innych algorytmów centroidalnych, które nie opierają się na siatkach trójkątnych.
+
+Szersze pytanie brzmi: czy w ogóle warto programować rozwiązanie, skoro wysokowydajne algorytmy zostały już zaimplementowane i spakowane w funkcje, takie jak`st_centroid()`?
+Redukcjonistyczna odpowiedź w tym konkretnym przypadku brzmi „nie”.
+W szerszym kontekście i biorąc pod uwagę korzyści płynące z nauki programowania, odpowiedź brzmi „to zależy”.
+W przypadku programowania łatwo jest stracić wiele godzin na próby zaimplementowania metody, tylko po to, aby odkryć, że ktoś już wykonał tę ciężką pracę.
+Można potraktować ten rozdział jako krok w kierunku opanowania sztuki programowania algorytmów geometrycznych.Można
+go jednak również postrzegać jako lekcję dotyczącą tego, kiedy należy próbować zaprogramować rozwiązanie uogólnione, a kiedy korzystać z istniejących rozwiązań wyższego poziomu.
+Z pewnością będą sytuacje, w których napisanie nowych funkcji będzie najlepszym rozwiązaniem, ale będą też sytuacje, w których najlepszym rozwiązaniem będzie użycie już istniejących funkcji.
+
+Zasada „nie odkrywaj Ameryki na nowo” ma zastosowanie w programowaniu w takim samym stopniu, jak w innych dziedzinach życia, a może nawet w większym.
+Odrobina researchu i przemyśleń na początku projektu może pomóc w podjęciu decyzji, gdzie najlepiej poświęcić czas na programowanie.
+Trzy zasady mogą również pomóc w maksymalnym wykorzystaniu wysiłku podczas pisania kodu, niezależnie od tego, czy jest to prosty skrypt, czy pakiet składający się z setek funkcji:
+
+1. [DRY](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself)(nie powtarzaj się): minimalizuj powtarzanie kodu i staraj się używać mniej linii kodu do rozwiązania konkretnego problemu. Zasada
+    ta została wyjaśniona w odniesieniu do wykorzystania funkcji w celu zmniejszenia powtarzalności kodu w rozdziale Funkcje książki R for Data Science [@grolemund_r_2016] .
+2. [KISS](https://en.wikipedia.org/wiki/KISS_principle)(keep it simple stupid): zasada ta sugeruje, że należy najpierw wypróbować proste rozwiązania i preferować je zamiast złożonych, wykorzystując zależności tam, gdzie jest to konieczne, i dążąc do zwięzłości skryptów.Zasada
+   ta jest komputerową analogią do[cytatu](https://www.nature.com/articles/d41586-018-05004-4)„rzeczy powinny być tak proste, jak to tylko możliwe, ale nie prostsze”.
+3. Modułowość: kod będzie łatwiejszy w utrzymaniu, jeśli zostanie podzielony na dobrze zdefiniowane części.
+   Funkcja powinna wykonywać tylko jedną rzecz, ale robić to naprawdę dobrze.
+   Jeśli funkcja staje się zbyt długa, należy rozważyć podzielenie jej na wiele małych funkcji, z których każda może być ponownie wykorzystana do innych celów, zgodnie z zasadami DRY i KISS.
+
+Nie możemy zagwarantować, że ten rozdział natychmiast umożliwi Ci tworzenie idealnie ukształtowanych funkcji do Twojej pracy.
+Jesteśmy jednak przekonani, że jego treść pomoże Ci zdecydować, kiedy jest odpowiedni moment, aby spróbować (gdy żadna z istniejących funkcji nie rozwiązuje problemu, gdy zadanie programistyczne jest w zasięgu Twoich możliwości i gdy korzyści płynące z rozwiązania prawdopodobnie przewyższą czas poświęcony na jego opracowanie).
+Stosując powyższe zasady w połączeniu z praktycznym doświadczeniem zdobytym podczas pracy nad powyższymi przykładami, rozwiniesz swoje umiejętności w zakresie pisania skryptów, tworzenia pakietów i programowania.
+Pierwsze kroki w programowaniu mogą być powolne (nie należy się spieszyć z poniższymi ćwiczeniami), ale długoterminowe korzyści mogą być ogromne.
+
+## Ćwiczenia{#ex-algorithms}
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_11-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+

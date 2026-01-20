@@ -1,0 +1,78 @@
+```{r 13-ex-e0, message=FALSE}
+library(sf)
+library(spDataLarge)
+```
+
+E1. W większości analiz przedstawionych w tym rozdziale skupiliśmy się na aktywnych środkach transportu, ale co z podróżami samochodem?
+
+- Jaki odsetek podróży wobiekcie„`desire_lines`”odbywa się samochodem?
+- Jaki odsetek „`desire_lines`”ma długość w linii prostej wynoszącą 5 km lub więcej?
+- Jaki odsetek podróży w „desire lines” o długości powyżej 5 km odbywa się samochodem?
+- Narysuj linie pożądane, które mają mniej niż 5 km długości i wzdłuż których ponad 50% podróży odbywa się samochodem.
+- Co zauważasz na temat lokalizacji tych zależnych od samochodu, ale krótkich linii pożądanych?
+
+```{r 13-e1, eval=FALSE, echo=FALSE}
+sum(desire_lines$car_driver) / sum(desire_lines$all)
+# 57%
+desire_lines_5km_plus = desire_lines |> 
+  filter(distance_km > 5)
+# Just over are half ar 5km+, 54%:
+nrow(desire_lines_5km_plus) / nrow(desire_lines)
+# 71 of 5km+ trips are made by car
+sum(desire_lines_5km_plus$car_driver) / sum(desire_lines_5km_plus$all)
+
+desire_lines_driving = desire_lines |> 
+  mutate(`Proportion driving` = car_driver / all) |> 
+  filter(`Proportion driving` > 0.5)
+nrow(desire_lines_5km_plus_driving) / nrow(desire_lines)
+
+desire_lines_5km_less_50_pct_driving = desire_lines |>
+  filter(distance_km <= 5) |> 
+  mutate(`Proportion driving` = car_driver / all) |> 
+  filter(`Proportion driving` > 0.5)
+desire_lines_5km_less_50_pct_driving |> 
+  tm_shape() +
+  tm_lines("Proportion driving")
+```
+
+E2. Jaka dodatkowa długość ścieżek rowerowych zostałaby zbudowana, gdyby wszystkie odcinki znajdujące się w odległości ponad 100 m od istniejących ścieżek rowerowych na rysunku 13.8 zostały zbudowane?
+
+```{r 13-transport-29, eval=FALSE, echo=FALSE}
+sum(st_length(route_network_no_infra))
+# 104193.6 [m]
+# Just over 100 km
+```
+
+E3. Jaka część podróży przedstawionych w`desire_lines`jest uwzględniona wobiekcie`routes_short_scenario`?
+
+- Dodatkowe pytanie: jaka część wszystkich podróży odbywa się na trasach preferowanych, które przecinają`routes_short_scenario`?
+
+```{r 13-transport-30, echo=FALSE, eval=FALSE}
+sum(routes_short_scenario$all) / sum(desire_lines$all) # 13%
+d_intersect = desire_lines[routes_short_scenario, , op = st_crosses]
+sum(d_intersect$all) / sum(desire_lines$all) # 88%
+```
+
+E4. Analiza przedstawiona w tym rozdziale ma na celu pokazanie, w jaki sposób metody geokomputacji mogą być stosowane w badaniach dotyczących transportu.
+Gdybyś robił to naprawdę, w administracji rządowej lub w firmie konsultingowej zajmującej się transportem, jakie trzy najważniejsze rzeczy zrobiłbyś inaczej?
+
+```{r}
+# Higher level of geographic resolution.
+# Use cycle-specific routing services.
+# Identify key walking routes.
+# Include a higher proportion of trips in the analysis
+```
+
+E5. Oczywiście trasy wskazane na rysunku 13.8 przedstawiają tylko część sytuacji.
+Jak rozszerzyłbyś tę analizę?
+
+E6. Wyobraź sobie
+
+,
+
+że chcesz rozszerzyć scenariusz, tworząc kluczowe*obszary*(nie trasy) dla inwestycji w lokalną politykę rowerową, takie jak strefy wolne od samochodów, parkingi rowerowe i strategia ograniczania parkingów samochodowych.
+W jaki sposóbzbiory danychrastrowe/indeksowe{raster}mogąpomóc w tej pracy?
+
+- Dodatkowe zadanie: opracuj warstwę rastrową, która dzieli region Bristolu na 100 komórek (10 x 10) i oszacuj średnią prędkość na drogach w każdej z nich na podstawie zbiorudanych`bristol_ways`(patrz rozdział @ref(location)).
+
+

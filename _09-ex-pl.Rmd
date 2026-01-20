@@ -1,0 +1,331 @@
+```{r 09-ex-e0, message=FALSE}
+library(sf)
+library(terra)
+library(dplyr)
+library(spData)
+```
+
+Ćwiczenia te opierają się na nowym obiekcie,`africa`.
+Utwórz go, korzystając zzestawów danych`world`i`worldbank_df`zpakietu**spData**w następujący sposób:
+
+```{r 08-mapping-41, warning=FALSE, include=TRUE}
+library(spData)
+africa = world |> 
+  filter(continent == "Africa", !is.na(iso_a2)) |> 
+  left_join(worldbank_df, by = "iso_a2") |> 
+  select(name, subregion, gdpPercap, HDI, pop_growth) |> 
+  st_transform("ESRI:102022") |> 
+  st_make_valid() |> 
+  st_collection_extract("POLYGON")
+```
+
+Wykorzystamy równieżzestawy danych`zion`i`nlcd`z**pakietu spDataLarge**:
+
+```{r 08-mapping-42, results="hide", include=TRUE}
+zion = read_sf((system.file("vector/zion.gpkg", package = "spDataLarge")))
+nlcd = rast(system.file("raster/nlcd.tif", package = "spDataLarge"))
+```
+
+E1. Utwórz mapę przedstawiającą rozmieszczenie geograficzne wskaźnika rozwoju społecznego (`HDI`) w Afryce, korzystając zpakietówbase**graphics**(wskazówka: użyj`plot()`) i**tmap**(wskazówka: użyj`tm_shape(africa) + ...`).
+
+- Wymień dwie zalety każdego z nich na podstawie zdobytego doświadczenia.
+- Wymień trzy inne pakiety do tworzenia map i zalety każdego z nich.
+- Dodatkowe zadanie: utwórz trzy kolejne mapy Afryki, korzystając z tych trzech innych pakietów.
+
+```{r}
+# graphics
+plot(africa["HDI"])
+# # tmap
+# remotes::install_github("r-tmap/tmap")
+library(tmap)
+tm_shape(africa) + 
+  tm_polygons("HDI")
+# ggplot
+library(ggplot2)
+ggplot() +
+  geom_sf(data = africa, aes(fill = HDI))
+# ggplotly
+library(plotly)
+g = ggplot() +
+  geom_sf(data = africa, aes(fill = HDI))
+ggplotly(g)
+# mapsf
+library(mapsf)
+mf_map(x = africa, var = "HDI", type = "choro")
+```
+
+E2. Rozszerz mapę**tmap**utworzoną w poprzednim ćwiczeniu, tak aby legenda miała trzy kategorie: „Wysoki” (`HDI`powyżej 0,7), „Średni” (`HDI`między 0,55 a 0,7) i „Niski” (`HDI`poniżej 0,55).
+Dodatkowo: popraw estetykę mapy, na przykład zmieniając tytuł legendy, etykiety klas i paletę kolorów.
+
+```{r}
+library(tmap)
+tm_shape(africa) + 
+  tm_polygons("HDI",
+              fill.scale = tm_scale_intervals(breaks = c(0, 0.55, 0.7, 1),
+                                              labels = c("Low", "Medium", "High"),
+                                              values = "-viridis"),
+              fill.legend = tm_legend(title = "Human Development Index")) 
+```
+
+E3. Przedstawpodregiony stanu Utah (`africa`) na mapie.
+Zmień domyślną paletę kolorów i tytuł legendy.
+Następnie połącz tę mapę z mapą utworzoną w poprzednim ćwiczeniu w jeden wykres.
+
+```{r}
+asubregions = tm_shape(africa) +
+  tm_polygons("subregion",
+              fill.scale = tm_scale_categorical(values = "Set3"),
+              fill.legend = tm_legend(title = "Subregion:"))
+ahdi = tm_shape(africa) + 
+  tm_polygons("HDI",
+              fill.scale = tm_scale_intervals(breaks = c(0, 0.55, 0.7, 1),
+                                              labels = c("Low", "Medium", "High"),
+                                              values = "-viridis"),
+              fill.legend = tm_legend(title = "Human Development Index:")) 
+tmap_arrange(ahdi, asubregions)
+```
+
+E4. Utwórz mapę pokrycia terenu Parku Narodowego Zion.
+
+- Zmień domyślne kolory
+
+,
+
+- aby dopasować je do swojego postrzegania kategorii pokrycia terenu
+
+.
+
+- Dodaj skalę i strzałkę północną oraz zmień położenie obu elementów, aby poprawić estetykę mapy
+- . Dodatkowo: dodaj mapę lokalizacji Parku Narodowego Zion w kontekście stanu Utah. (Wskazówka: obiekt reprezentujący Utah można pobrać zzestawu danych`us_states`).
+
+```{r}
+tm_shape(nlcd) +
+  tm_raster(col.scale = tm_scale_categorical(values = c("#495EA1", "#AF5F63", "#EDE9E4",
+                                                        "#487F3F", "#EECFA8", "#A4D378",
+                                                        "#FFDB5C", "#72D593"), levels.drop = TRUE)) +
+  tm_scalebar(bg.color = "white", position = c("left", "bottom")) +
+  tm_compass(bg.color = "white", position = c("right", "top")) +
+  tm_layout(legend.position = c("left", "top"), legend.bg.color = "white")
+```
+
+```{r}
+# Bonus
+utah = subset(us_states, NAME == "Utah")
+utah = st_transform(utah, st_crs(zion))
+
+zion_region = st_bbox(zion) |> 
+  st_as_sfc()
+
+main = tm_shape(nlcd) +
+  tm_raster(col.scale = tm_scale_categorical(values = c("#495EA1", "#AF5F63", "#EDE9E4",
+                                                        "#487F3F", "#EECFA8", "#A4D378",
+                                                        "#FFDB5C", "#72D593"), levels.drop = TRUE)) +
+  tm_scalebar(bg.color = "white", position = c("left", "bottom")) +
+  tm_compass(bg.color = "white", position = c("right", "top")) +
+  tm_layout(legend.position = c("left", "top"), legend.bg.color = "white")
+
+inset = tm_shape(utah) +
+  tm_polygons() +
+  tm_text("UTAH", size = 3) +
+  #tm_shape(zion) +
+  #tm_polygons(col = "red") +
+  tm_shape(zion_region) +
+  tm_borders(col = "red") +
+  tm_layout(frame = FALSE)
+
+library(grid)
+norm_dim = function(obj){
+    bbox = st_bbox(obj)
+    width = bbox[["xmax"]] - bbox[["xmin"]]
+    height = bbox[["ymax"]] - bbox[["ymin"]]
+    w = width / max(width, height)
+    h = height / max(width, height)
+    return(unit(c(w, h), "snpc"))
+}
+main_dim = norm_dim(zion)
+ins_dim = norm_dim(utah)
+
+main_vp = viewport(width = main_dim[1], height = main_dim[2])
+ins_vp = viewport(width = ins_dim[1] * 0.4, height = ins_dim[2] * 0.4,
+                  x = unit(1, "npc") - unit(0.5, "cm"), y = unit(0.5, "cm"),
+                  just = c("right", "bottom"))
+
+grid.newpage()
+print(main, vp = main_vp)
+pushViewport(main_vp)
+print(inset, vp = ins_vp)
+```
+
+E5. Utwórz mapy fasetowe krajów Afryki Wschodniej:
+
+- jedna faza przedstawiająca wskaźnik HDI, a druga wzrost liczby ludności (wskazówka: użyjodpowiedniozmiennych`HDI`i`pop_growth`).
+- Z „małą wielokrotnością” dla każdego kraju
+
+```{r}
+ea = subset(africa, subregion == "Eastern Africa")
+#1
+tm_shape(ea) +
+  tm_polygons(c("HDI", "pop_growth"))
+#2
+tm_shape(ea) +
+  tm_polygons() +
+  tm_facets_wrap("name")
+```
+
+E6. Opierając się na poprzednich przykładach map fasetowych, utwórz animowane mapy Afryki Wschodniej:
+
+- Wyświetlanie poszczególnych krajów w kolejności
+- Wyświetlanie poszczególnych krajów w kolejności wraz z legendą przedstawiającą wskaźnik HDI
+
+```{r, eval=FALSE}
+tma1 = tm_shape(ea) +
+  tm_polygons() +
+  tm_facets(by = "name", nrow = 1, ncol = 1)
+tmap_animation(tma1, filename = "tma2.gif", width = 1000, height = 1000)
+browseURL("tma1.gif")
+
+tma2 = tm_shape(africa) +
+  tm_polygons(fill = "lightgray") +
+  tm_shape(ea) +
+  tm_polygons(fill = "darkgray") +
+  tm_shape(ea) +
+  tm_polygons(fill = "HDI") +
+  tm_facets(by = "name", nrow = 1, ncol = 1)
+tmap_animation(tma2, filename = "tma2.gif", width = 1000, height = 1000)
+browseURL("tma2.gif")
+```
+
+E7. Utwórz interaktywną mapę wskaźnika HDI w Afryce:
+
+- Za pomocą**tmap**
+- Za pomocą**mapview**
+- Za pomocą**leaflet**
+- Dodatkowo: Dla każdego podejścia dodaj legendę (jeśli nie jest ona dostarczana automatycznie) oraz skalę
+
+```{r, eval=FALSE}
+# tmap
+tmap_mode("view")
+tm_shape(africa) + tm_polygons("HDI") + tm_scalebar()
+# mapview
+mapview::mapview(africa["HDI"])
+# leaflet
+africa4326 = st_transform(africa, "EPSG:4326")
+library(leaflet)
+pal = colorNumeric(palette = "YlGnBu", domain = africa4326$HDI)
+leaflet(africa4326) |> 
+  addTiles() |> 
+  addPolygons(stroke = FALSE, smoothFactor = 0.2, fillOpacity = 1, color = ~pal(HDI)) |> 
+  addLegend("bottomright", pal = pal, values = ~HDI, opacity = 1) |> 
+  addScaleBar()
+```
+
+E8. Naszkicuj na papierze pomysły na aplikację do mapowania internetowego, która mogłaby być wykorzystana do tworzenia polityki transportowej lub zagospodarowania terenu w oparciu o dane:
+
+- W mieście, w którym mieszkasz, dla kilku użytkowników dziennie
+- W kraju, w którym mieszkasz, dla kilkudziesięciu użytkowników dziennie
+- Na
+- 
+- całym świecie dla setek użytkowników dziennie i dużych wymagań dotyczących obsługi danych
+
+```{asis}
+Ideas could include identification of routes where many people currently drive short distances, ways to encourage access to parks, or prioritization of new developments to reduce long-distance travel.
+
+At the city level a web map would be sufficient.
+
+A the national level a mapping application, e.g., with shiny, would probably be needed.
+
+Worldwide, a database to serve the data would likely be needed. Then various front-ends could plug in to this.
+```
+
+E9. Zaktualizuj kod w`coffeeApp/app.R`tak, aby zamiast skupiać się na Brazylii
+
+- ,
+
+użytkownik mógł wybrać kraj, na którym chce się skupić:
+
+- Korzystając z`textInput()`
+- Korzystając z`selectInput()`
+
+```{asis}
+The answer can be found in the `shinymod` branch of the geocompr repo: https://github.com/Robinlovelace/geocompr/pull/318/files
+You create the new widget and then use it to set the center.
+Note: the input data must be fed into the map earlier to prevent the polygons disappearing when you change the center this way.
+```
+
+E10. Odtwórz jak najdokładniej rysunek 9.1 i rysunek 9.7, korzystając zpakietu**ggplot2**.
+
+```{r}
+library(ggplot2)
+ggplot() + 
+  geom_sf(data = nz, color = NA) +
+  coord_sf(crs = st_crs(nz), datum = NA) +
+  theme_void()
+ggplot() +
+  geom_sf(data = nz, fill = NA) +
+  coord_sf(crs = st_crs(nz), datum = NA) +
+  theme_void()
+ggplot() +
+  geom_sf(data = nz) + 
+  coord_sf(crs = st_crs(nz), datum = NA) +
+  theme_void()
+# fig 9.7
+ggplot() +
+  geom_sf(data = nz, aes(fill = Median_income)) +
+  coord_sf(crs = st_crs(nz), datum = NA) +
+  scale_fill_distiller(palette = "Blues", direction = 1) + 
+  theme_void()
+ggplot() + 
+  geom_sf(data = nz, aes(fill = Island)) + 
+  coord_sf(crs = st_crs(nz), datum = NA) +
+  scale_fill_manual(values = c("#CC6677", "#332288")) + 
+  theme_void()
+```
+
+E11. Połączdane z`us_states`i`us_states_df`i oblicz wskaźnik ubóstwa dla każdego stanu,korzystając z nowego zestawu danych.
+Następnie utwórz ciągłą kartogramę obszaru na podstawie całkowitej liczby ludności.
+Na koniec utwórz i porównaj dwie mapy wskaźnika ubóstwa: (1) standardową mapę choropletyczną oraz (2) mapę wykorzystującą utworzone granice kartogramu.
+Jakie informacje dostarczają pierwsza i druga mapa?
+Czym się one od siebie różnią?
+
+```{r}
+tmap_mode("plot")
+library(cartogram)
+# prepare the data
+us = st_transform(us_states, "EPSG:9311")
+us = left_join(us, us_states_df, by = c("NAME" = "state"))
+# calculate a poverty rate
+us$poverty_rate = us$poverty_level_15 / us$total_pop_15
+# create a regular map
+ecm1 = tm_shape(us) +
+  tm_polygons("poverty_rate", fill.legend = tm_legend(title = "Poverty rate"))
+# create a cartogram
+us_carto = cartogram_cont(us, "total_pop_15")
+ecm2 = tm_shape(us_carto) + 
+  tm_polygons("poverty_rate", fill.legend = tm_legend(title = "Poverty rate"))
+# combine two maps
+tmap_arrange(ecm1, ecm2)
+```
+
+E12. Wizualizuj wzrost liczby ludności w Afryce.
+Następnie porównaj go z mapami siatki sześciokątnej i regularnej utworzonymi przy użyciupakietu**geogrid**.
+
+```{r}
+library(geogrid)
+
+hex_cells = calculate_grid(africa, grid_type = "hexagonal", seed = 25, learning_rate = 0.03)
+africa_hex = assign_polygons(africa, hex_cells)
+
+reg_cells = calculate_grid(africa, grid_type = "regular", seed = 25, learning_rate = 0.03)
+africa_reg = assign_polygons(africa, reg_cells)
+
+tgg1 = tm_shape(africa) +
+  tm_polygons("pop_growth", fill.legend = tm_legend(title = "Population's growth (annual %)"))
+tgg2 = tm_shape(africa_hex) + 
+  tm_polygons("pop_growth", fill.legend = tm_legend(title = "Population's growth (annual %)"))
+tgg3 = tm_shape(africa_reg) + 
+  tm_polygons("pop_growth", fill.legend = tm_legend(title = "Population's growth (annual %)"))
+
+tmap_arrange(tgg1, tgg2, tgg3)
+```
+
+

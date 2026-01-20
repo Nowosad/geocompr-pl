@@ -1,0 +1,331 @@
+# Wnioski{#conclusion}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## Wprowadzenie
+
+Podobnie jak rozdział wprowadzający, niniejszy rozdział końcowy zawiera kilka fragmentów kodu.
+Jego celem jest podsumowanie treści książki, z odniesieniem do powtarzających się tematów/pojęć, oraz zainspirowanie przyszłych kierunków zastosowań i rozwoju.
+Rozdział nie ma żadnych wymagań wstępnych.
+Jednakże, można uzyskać więcej korzyści, jeśli przeczytało się i wykonało ćwiczenia z części I (Podstawy), wypróbowało bardziej zaawansowane podejścia z części II (Rozszerzenia) oraz rozważyło, w jaki sposób geokomputacja może pomóc w rozwiązywaniu problemów związanych z pracą, badaniami lub innymi zagadnieniami, w odniesieniu do rozdziałów z części III (Zastosowania).
+
+Rozdział ma następującą strukturę.
+Sekcja @ref(package-choice) omawia szeroki zakres opcji przetwarzania danych geograficznych w języku R.
+Wybór jest kluczową cechą oprogramowania open source; sekcja ta zawiera wskazówki dotyczące wyboru spośród różnych opcji.
+Sekcja @ref(gaps) opisuje luki w treści książki i wyjaśnia, dlaczego niektóre obszary badań zostały celowo pominięte, a inne zostały podkreślone.
+Następnie sekcja @ref(questions) zawiera porady dotyczące zadawania dobrych pytań w przypadku utknięcia w martwym punkcie oraz wyszukiwania rozwiązań w Internecie.
+Sekcja @ref(next) odpowiada na następujące pytanie: co dalej po przeczytaniu tej książki?
+Sekcja @ref(benefit) powraca do szerszych kwestii poruszonych w rozdziale @ref(intro).
+Rozważamy w nim geokomputację jako część szerszego „podejścia open source”, które zapewnia publiczną dostępność metod, możliwość ich odtworzenia\\index{reproducibility}oraz wsparcie ze strony społeczności współpracujących.
+Ta ostatnia sekcja książki zawiera również wskazówki dotyczące tego, jak się zaangażować.
+
+## Wybór pakietu
+
+Cechą charakterystyczną języka R\\index{R}i ogólnie oprogramowania open source jest to, że często istnieje wiele sposobów osiągnięcia tego samego rezultatu.
+Poniższy fragment kodu ilustruje to za pomocą trzech funkcji, omówionych w rozdziałach @ref(attr) i @ref(geometry-operations), służących do połączenia 16 regionów Nowej Zelandii w jedną geometrię:
+
+```{r 16-synnthesis-1}
+#| message: FALSE
+library(spData)
+nz_u1 = sf::st_union(nz)
+nz_u2 = aggregate(nz["Population"], list(rep(1, nrow(nz))), sum)
+nz_u3 = dplyr::summarise(nz, t = sum(Population))
+identical(nz_u1, nz_u2$geometry)
+identical(nz_u1, nz_u3$geom)
+```
+
+Chociaż klasy, atrybuty i nazwy kolumn wynikowych obiektów`nz_u1`do`nz_u3`różnią się, ich geometrie są identyczne, co zostało zweryfikowane za pomocą podstawowej funkcji R`identical()`.^\[
+Pierwsza operacja, przeprowadzona przez funkcję`st_union()`\\index{vector!union}, tworzy obiekt klasy`sfc`(kolumna prostych obiektów).
+Dwie ostatnie operacje tworząobiekty`sf`, z których każdy*zawiera*kolumnę prostych obiektów.
+Dlatego to geometrie zawarte w kolumnach prostych obiektów, a nie same obiekty, są identyczne.
+\]
+Które z nich należy użyć?
+To zależy: pierwsze z nich przetwarza tylko dane geometryczne zawarte w`nz`, więc jest szybsze, podczas gdy pozostałe opcje wykonują operacje atrybutowe, które mogą być przydatne w kolejnych krokach.
+To, czy użyć podstawowej funkcji R`aggregate()`,czyfunkcji**dplyr**`summarise()`, jest kwestią preferencji, przy czym ta druga jest dla wielu bardziej czytelna.
+
+Ogólnie rzecz biorąc, podczas pracy z danymi geograficznymi w R często istnieje wiele opcji do wyboru, nawet w ramach jednego pakietu.
+Zakres opcji rozszerza się jeszcze bardziej, gdy weźmie się pod uwagę więcej pakietów R: ten sam wynik można osiągnąć,korzystającna przykładze starszegopakietu**sp**\\index{sp (package)}.
+Jednak zgodnie z naszym celem, jakim jest udzielanie dobrych porad, zalecamy korzystanie z nowszego, bardziej wydajnego i przyszłościowegopakietu**sf**.
+To samo dotyczy wszystkich pakietów przedstawionych w tej książce, chociaż pomocna może być (o ile nie rozprasza uwagi) świadomość istnienia alternatyw i umiejętność uzasadnienia wyboru oprogramowania.
+
+Częstym wyborem, na który nie ma prostej odpowiedzi, jest wybór między**tidyverse**\\index{tidyverse (package)}a podstawowym R do obliczeń geograficznych.
+Poniższy fragment kodu pokazuje na przykładsposoby**tidyverse**i podstawowego R na wyodrębnieniekolumny`Name`zobiektu`nz`, jak opisano w rozdziale @ref(attr):
+
+```{r 16-synnthesis-2, message=FALSE}
+library(dplyr)                          # attach a tidyverse package
+nz_name1 = nz["Name"]                   # base R approach
+nz_name2 = nz |>                        # tidyverse approach
+  select(Name)
+identical(nz_name1$Name, nz_name2$Name) # check results
+```
+
+Rodzi to pytanie: którego użyć?
+Odpowiedź brzmi: to zależy.
+Każde podejście ma swoje zalety: podstawowy R\\index{R!base}jest zazwyczaj stabilny, dobrze znany i ma minimalne zależności, dlatego często jest preferowany do tworzenia oprogramowania (pakietów).Z
+drugiej strony podejście tidyverse jest często preferowane do programowania interaktywnego.
+Wybór między tymi dwoma podejściami jest zatem kwestią preferencji i zastosowania.
+
+Chociaż niniejsza książka omawia powszechnie potrzebne funkcje — takie jakoperator podzbiorówpodstawowego R`[`ifunkcja**dplyr**`select()`przedstawione w powyższym fragmencie kodu — istnieje wiele innych funkcji do pracy z danymi geograficznymi, pochodzących z innych pakietów, które nie zostały wspomniane.
+Rozdział @ref(intro) wymienia ponad 20 wpływowych pakietów do pracy z danymi geograficznymi, a tylko kilka z nich zostało omówionych w książce.
+W języku R dostępne są setki innych pakietów do pracy z danymi geograficznymi, a każdego roku powstają kolejne.
+Według stanu na 2024 r. w Spatial[Task View](https://cran.r-project.org/web/views/)wymieniono ponad 160 pakietów,a każdego roku powstają niezliczone funkcje do analizy danych geograficznych.
+
+```{r 16-synnthesis-3, eval=FALSE, echo=FALSE}
+# aim: find number of packages in the spatial task view
+# how? see:
+# vignette("selectorgadget")
+stv_pkgs = xml2::read_html("https://cran.r-project.org/web/views/Spatial.html")
+pkgs = rvest::html_nodes(stv_pkgs, "#reading-and-writing-spatial-data---gis-software-connectors+ ul li , #geographic-metadata+ ul li , #raster-data+ ul li , #specific-geospatial-data-sources-of-interest+ ul li , #data-processing---general+ ul li , #data-cleaning+ ul li , #data-processing---specific+ ul li , #spatial-sampling+ ul li , #base-visualization-packages+ ul li , #thematic-cartography-packages+ ul li , #packages-based-on-web mapping-frameworks+ ul li , #building-cartograms+ ul li , p+ ul li , #spatial-data---general+ ul li")
+pkgs_char = rvest::html_text(pkgs)
+length(pkgs_char)
+```
+
+Tempo ewolucji ekosystemu przestrzennego języka R może być szybkie, ale istnieją strategie pozwalające radzić sobie z szeroką gamą opcji.
+Radzimy zacząć od*dogłębnego*poznania jednego podejścia, ale jednocześnie zdobyć ogólną wiedzę na tematdostępnych opcji.
+Ta rada dotyczy zarówno rozwiązywania problemów geograficznych za pomocą języka R, jak i innych dziedzin wiedzy i zastosowań.
+Sekcja @ref(next) obejmuje zmiany w innych językach.
+
+Oczywiście niektóre pakiety działają lepiej niż inne w przypadku tego*samego*zadania, dlatego ważne jest,aby wiedzieć, którego z nich użyć.
+W książce staraliśmy się skupić na pakietach, które są przyszłościowe (będą działać przez długi czas), wydajne (w porównaniu z innymi pakietami R), dobrze utrzymane (z społecznościami użytkowników i programistów) oraz komplementarne.Nadal istnieją nakładające
+sięfunkcje w pakietach, z których korzystaliśmy, co ilustruje różnorodność pakietów do tworzenia map, jak podkreślono na przykład w rozdziale @ref(adv-map).
+
+Nakładające się funkcje mogą być korzystne.
+Nowy pakiet o podobnej (ale nie identycznej) funkcjonalności w porównaniu z istniejącym pakietem może zwiększyć odporność, wydajność (częściowo dzięki przyjaznej konkurencji i wzajemnej wymianie wiedzy między programistami) oraz wybór, które są kluczowymi zaletami geokomputacji z wykorzystaniem oprogramowania open source.
+W tym kontekście decyzja o tym, której kombinacjipakietów**sf**,**tidyverse**,**terra**i innych użyć,powinna być podjęta z uwzględnieniem alternatywnych rozwiązań.
+Na przykładekosystem**sp**,któryzastąpił**sf**\\index{sf}, może wykonać wiele zadań omówionych w tej książce, a ze względu na swój wiek jest wykorzystywany przez wiele innych pakietów.
+W momencie pisania tej książki w 2024 r. 463 pakiety`Depend`lub`Import`**sp**, co stanowi niewielki wzrost w porównaniu z 452 w październiku 2018 r., co pokazuje, że jego struktury danych są szeroko stosowane i zostały rozszerzone w wielu kierunkach.
+Odpowiednie liczby dla**sf** to 69 w 2018 r. i 431 w 2024 r., co podkreśla, że pakiet jest przyszłościowy i ma rosnącą bazę użytkowników oraz społeczność programistów [@bivand_progress_2021] .
+Chociażpakiet**spatstat**jest najbardziej znany z analizy wzorców punktowych,obsługujeonrównież raster\\index{raster} i inne geometrie wektorowe oraz zapewnia zaawansowane funkcje do statystyki przestrzennej i nie tylko [@baddeley_spatstat_2005] .
+Warto również poszukać nowych alternatyw, które są w trakcie opracowywania, jeśli istnieją potrzeby, których nie zaspokajają istniejące pakiety.
+
+```{r 16-synnthesis-4, eval=FALSE, echo=FALSE}
+# aim: find number of packages that depend on sp, sf and spatstat
+sfdeps = devtools::revdep(pkg = "sf", dependencies = c("Depends", "Imports"))
+spatstatdeps = devtools::revdep(pkg = "spatstat", dependencies = c("Depends", "Imports"))
+spdeps = devtools::revdep(pkg = "sp", dependencies = c("Depends", "Imports"))
+length(sfdeps) # 431
+length(spatstatdeps) # 34
+length(spdeps) # 463
+431 / 69
+```
+
+## Luki i nakładania się{#gaps}
+
+Geocomputation\\index{geocomputation}to szeroka dziedzina, więc w niniejszej książce nie da się uniknąć pewnych braków.
+Wybraliśmy wybrane tematy, celowo podkreślając niektóre zagadnienia, techniki i pakiety, pomijając inne.
+Staraliśmy się położyć nacisk na tematy, które są najczęściej potrzebne w rzeczywistych zastosowaniach, takie jak operacje na danych geograficznych, podstawy systemów odniesienia współrzędnych, operacje odczytu/zapisu danych oraz techniki wizualizacji.
+Niektóre tematy i zagadnienia pojawiają się wielokrotnie, aby pomóc czytelnikowi w nabyciu podstawowych umiejętności w zakresie geocomputation oraz pokazać, jak przejść do bardziej zaawansowanych tematów i konkretnych zastosowań.
+
+Celowo pominięto niektóre tematy, które są szczegółowo omówione w innych publikacjach.Modelowanie
+statystyczne danych przestrzennych, takie jak analiza wzorców punktowych\\index{point pattern analysis}, interpolacja przestrzenna\\index{spatial interpolation}(np. kriging) i regresja przestrzenna\\index{spatial regression}, są wspomniane w kontekście uczenia maszynowego w rozdziale @ref(spatial-cv), ale nie są omówione szczegółowo.
+ Istnieją już doskonałe źródła informacji na temat tych metod, w tym rozdziały poświęcone statystyce w książce „@pebesma_spatial_2023” oraz książki dotyczące analizy wzorców punktowych [@baddeley_spatial_2015] , technik bayesowskich stosowanych do danych przestrzennych [@gomez-rubio_bayesian_2020;@moraga_spatial_2023] , a także książki poświęcone konkretnym zastosowaniom, takim jak zdrowie [@moraga_geospatial_2019] i[analiza intensywności pożarów lasów](https://bookdown.org/mcwimberly/gdswr-book/application---wildfire-severity-analysis.html) [@wimberly_geographic_2023] .
+Inne tematy, którym poświęcono mniej uwagi, to teledetekcja i wykorzystanie języka R wraz z (a nie jako pomost do) dedykowanym oprogramowaniem GIS.
+Istnieje wiele zasobów dotyczących tych tematów, w tym[dyskusja na temat teledetekcji w R](https://github.com/r-spatial/discuss/issues/56), @wegmann\_remote\_2016 oraz materiały dydaktyczne związane z GIS dostępne na[Uniwersytecie w Marburgu](https://geomoer.github.io/moer-info-page/courses.html).
+
+W rozdziałach @ref(spatial-cv) i @ref(eco)skupiliśmy się na uczeniu maszynowym, a nie na przestrzennej inferencji statystycznej\\index{statistical inference}ze względu na bogactwo wysokiej jakości zasobów na ten temat.
+Zasoby te obejmują @zuur\_mixed\_2009, @zuur\_beginners\_2017, które koncentrują się na ekologicznych przypadkach użycia, oraz bezpłatne materiały dydaktyczne i kod dotyczące*geostatystyki i obliczeń statystycznych w oprogramowaniu open source*, dostępne na stronie[css.cornell.edu/faculty/dgr2](https://css.cornell.edu/faculty/dgr2/teach/).
+[*R for Geographic Data Science*](https://sdesabbata.github.io/r-for-geographic-data-science/)zawiera wprowadzenie do języka R w zakresie nauki o danych geograficznych i modelowania.
+
+W dużej mierze pominęliśmy geocomputation w odniesieniu do „big data”\\index{big data}, przez co rozumiemy zbiory danych, które nie mieszczą się na laptopie o wysokiej specyfikacji.
+Decyzja ta jest uzasadniona faktem, że większość zbiorów danych geograficznych potrzebnych do typowych zastosowań badawczych lub politycznychmieści*się*na sprzęcie konsumenckim, z wyjątkiem dużych zbiorów danych teledetekcyjnych o wysokiej rozdzielczości (patrz sekcja @ref(cloud)).
+Możliwe jest zwiększenie pamięci RAM w komputerze lub tymczasowe „wynajęcie” mocy obliczeniowej dostępnej na platformach takich jak[GitHub Codespaces, które można wykorzystać do uruchomienia kodu zawartego w tej książce](https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=84222786&machine=basicLinux32gb&devcontainer_path=.devcontainer.json&location=WestEurope).
+Ponadto nauka rozwiązywania problemów na małych zbiorach danych jest warunkiem wstępnym do rozwiązywania problemów na ogromnych zbiorach danych, a nacisk w tej książce kładziony jest na rozpoczęcie pracy, a umiejętności nabyte tutaj będą przydatne podczas przechodzenia do większych zbiorów danych.
+Analiza „dużych zbiorów danych” często polega na wyodrębnieniu niewielkiej ilości danych z bazy danych w celu przeprowadzenia konkretnej analizy statystycznej.Bazy danych
+przestrzennych, omówione w rozdziale @ref(gis), mogą pomóc w analizie zbiorówdanych, które nie mieszczą się w pamięci.
+Dostęp do „backendów chmury obserwacji Ziemi” można uzyskać z języka R za pomocąpakietu**openeo**(sekcja @ref(openeo)).
+Jeśli musisz pracować z dużymi zbiorami danych geograficznych, zalecamy również zapoznanie się z projektami takimi jak[Apache Sedona](https://sedona.apache.org/)i nowymi formatami plików, takimi jak[GeoParquet](https://paleolimbot.github.io/geoarrow/).
+
+## Pomoc{#questions}
+
+<!-- Zastanawiam się, czy powinno to być załącznik, a może nawet nowy rozdział? -->
+
+<!-- W rozdziale \@ref(intro) stwierdzono, że podejście zalecane w tej książce „może pomóc w usunięciu ograniczeń kreatywności narzuconych przez oprogramowanie”. -->
+
+<!-- Omówiliśmy wiele technik, które powinny umożliwić Ci przekształcenie wielu pomysłów w powtarzalny i skalowalny kod do badań i zastosowań geoinformatycznych. -->
+
+<!-- Jednak kreatywność wiąże się z wymyślaniem *nowych* pomysłów, które nie zostały jeszcze wdrożone, co rodzi pytanie: co się stanie, gdy oprogramowanie *nakłada* ograniczenia, ponieważ nie jesteś pewien, jak wdrożyć swoje kreatywne pomysły? -->
+
+<!-- W rozdziale \@ref(intro) przedstawiliśmy nasz cel, jakim jest zapewnienie solidnych podstaw, na których można budować szeroki zakres projektów związanych z analizą danych, badaniami oraz rozwojem metodologii i oprogramowania. -->
+
+<!-- Geocomputation to nie tylko wykorzystanie istniejących technik, ale także opracowywanie nowych narzędzi, co z definicji wiąże się z generowaniem nowej wiedzy. -->
+
+Geocomputation to rozległa i wymagająca dziedzina, w której problemy i tymczasowe przeszkody w pracy są niemal nieuniknione.
+W wielu przypadkach można po prostu „utknąć” w określonym punkcie procesu analizy danych, napotykając niejasne komunikaty o błędach, które trudno jest zdebugować.
+Można też uzyskać nieoczekiwane wyniki, nie mając zbyt wielu wskazówek co do tego, co się dzieje.
+W tej sekcji przedstawiono wskazówki, które pomogą pokonać takie problemy poprzez jasne zdefiniowanie problemu, poszukiwanie istniejącej wiedzy na temat rozwiązań, a jeśli te podejścia nie rozwiązują problemu, poprzez sztukę zadawania dobrych pytań.
+
+<!-- generowanie nowej otwartej wiedzy poprzez zaangażowanie społeczności. -->
+
+Kiedy utkniesz w określonym momencie, warto najpierw cofnąć się o krok i zastanowić się, które podejście ma największe szanse na rozwiązanie problemu.
+Wypróbowanie każdego z poniższych kroków — pomijając kroki już wykonane — zapewnia uporządkowane podejście do rozwiązywania problemów:
+
+1. Określ dokładnie, co chcesz osiągnąć, zaczynając od podstawowych zasad (i często szkicu, jak opisano poniżej).
+2. Zdiagnozuj dokładnie, w którym miejscu kodu pojawiają się nieoczekiwane wyniki, uruchamiając i badając wyniki poszczególnych linii kodu i ich poszczególnych komponentów (możesz uruchomić poszczególne części złożonego polecenia, zaznaczając je kursorem i naciskając klawisze Ctrl+Enter w RStudio).
+3. Przeczytaj dokumentację funkcji, która została zdiagnozowana jako „punkt awarii” w poprzednim kroku. Samo zrozumienie wymaganych danych wejściowych do funkcji i uruchomienie przykładów, które często znajdują się na dole stron pomocy, może pomóc w rozwiązaniu zaskakująco dużej części problemów (uruchom polecenie`?terra::rast`i przewiń w dół do przykładów, które warto odtworzyć na początku pracy z funkcją).
+4. Jeśli przeczytanie wbudowanej dokumentacji R, jak opisano w poprzednim kroku, nie pomaga w rozwiązaniu problemu, prawdopodobnie nadszedł czas, aby przeprowadzić szersze wyszukiwanie w Internecie, aby sprawdzić, czy inni pisali o problemie, z którym się borykasz. Poniżej znajduje się lista miejsc, w których można szukać pomocy.
+5. Jeśli wszystkie powyższe kroki zawiodą i nie możesz znaleźć rozwiązania w Internecie, być może nadszedł czas, aby sformułować pytanie wraz z powtarzalnym przykładem i opublikować je w odpowiednim miejscu.
+
+Kroki od 1 do 3 opisane powyżej są dość oczywiste, ale ze względu na ogrom internetu i mnogość opcji wyszukiwania, przed podjęciem decyzji o sformułowaniu pytania warto rozważyć skuteczne strategie wyszukiwania.
+
+### Wyszukiwanie rozwiązań w Internecie
+
+Wyszukiwarki internetowe są logicznym punktem wyjścia dla wielu problemów. W niektórych
+przypadkach„wyszukiwanie w Google” może doprowadzić do odkrycia wpisów na blogach, wiadomości na forach i innych treści online dotyczących konkretnego problemu, z którym się borykasz.
+Wystarczy wpisać jasny opis problemu/pytania, ale ważne jest, aby być konkretnym (np. podając nazwy funkcji i pakietów oraz źródła zestawów danych wejściowych, jeśli problem dotyczy konkretnego zestawu danych).
+Możesz również zwiększyć skuteczność wyszukiwania w Internecie, dodając dodatkowe szczegóły:
+
+<!-- Aby podać konkretny przykład, wyobraź sobie, że chcesz wiedzieć, jak używać niestandardowych symboli na interaktywnej mapie. -->
+
+- Użyj cudzysłowów, aby zmaksymalizować szanse, że wyniki będą odnosiły się do dokładnie tego problemu, który napotkałeś, zmniejszając liczbę zwracanych wyników. Na przykład, jeśli spróbujesz zapisać plik GeoJSON w lokalizacji, która już istnieje, i nie uda Ci się to, otrzymasz komunikat o błędzie „GDAL Error 6: DeleteLayer() not supported by this dataset” (Błąd GDAL 6: funkcja DeleteLayer() nie jest obsługiwana przez ten zbiór danych). Konkretne zapytanie, takie jak „`"GDAL Error 6" sf`” (błądGDAL 6:funkcja DeleteLayer() nie jest obsługiwana przez ten zbiór danych),ma większe szanse na znalezienie rozwiązania niż wyszukiwanie „`GDAL Error 6`”(błądGDAL6: funkcja DeleteLayer()nie jest obsługiwanaprzeztenzbiórdanych) bez cudzysłowów.
+- Ustaw[ograniczenia czasowe](https://uk.pcmag.com/software-services/138320/21-google-search-tips-youll-want-to-learn), na przykład zwracanie tylko treści utworzonych w ciągu ostatniego roku może być przydatne podczas wyszukiwania pomocy dotyczącej rozwijającego się pakietu.
+- Skorzystaj z dodatkowych[funkcji wyszukiwarki](https://www.makeuseof.com/tag/6-ways-to-search-by-date-on-google/), na przykład ograniczając wyszukiwanie do treści hostowanych na CRAN za pomocą site:r-project.org.
+
+### Miejsca, w których można szukać (i prosić o) pomoc{#help}
+
+W przypadkach, gdy wyszukiwanie w Internecie nie przynosi rozwiązania, warto poprosić o pomoc.
+Istnieje wiele forów, na których można to zrobić, w tym:
+
+- Lista mailingowa R's Special Interest Group on Geographic data ([R-SIG-GEO](https://stat.ethz.ch/mailman/listinfo/r-sig-geo))
+- Strona internetowa GIS Stackexchange pod adresem[gis.stackexchange.com](https://gis.stackexchange.com/)
+- Duża i ogólna strona z pytaniami i odpowiedziami dotyczącymi programowania[stackoverflow.com](https://stackoverflow.com/)
+- Fora internetowe związane z konkretnym podmiotem, takie jak[Posit Community](https://forum.posit.co/),forum internetowe[rOpenSci Discuss](https://discuss.ropensci.org/)oraz fora związane z konkretnymi narzędziami programowymi, takie jakforum[Stan](https://discourse.mc-stan.org/)
+- Platformy programistyczne, takie jak GitHub, które obsługują narzędzia do śledzenia problemów dla większości pakietów R-spatial, a także coraz częściej wbudowane strony dyskusyjne, takie jak ta utworzona w celu zachęcenia do dyskusji (nie tylko zgłaszania błędów) na tematpakietu**sfnetworks**(zobacz[luukvdmeer/sfnetworks/discussions](https://github.com/luukvdmeer/sfnetworks/discussions/))
+- Czat online i fora związane ze społecznościami, takimi jak[rOpenSci](https://ropensci.org/blog/2022/09/13/contributing-ropensci/)i[geocompx](https://geocompx.org)\\index{geocompx}(która posiada[serwer](https://discord.com/invite/PMztXYgNxp)[Discord,](https://discord.com/invite/PMztXYgNxp)na którym można zadawać pytania), których częścią jest niniejsza książka.
+
+### Przykłady z możliwością odtworzenia za pomocą**reprex**{#reprex}
+
+. Jeśli chodzi o zadawanie dobrych pytań, kluczowe znaczenie ma jasno sformułowane pytanie poparte przystępnym i w pełni odtwarzalnym przykładem (zobacz również<https://r4ds.hadley.nz/workflow-help.html>).Po pokazaniu kodu, który „nie działał”
+z punktu widzenia użytkownika, pomocne jest również wyjaśnienie, co chcielibyście zobaczyć.
+Bardzo przydatnym narzędziem do tworzenia powtarzalnych przykładów jestpakiet**reprex**\\index{reproducibility}.
+Aby podkreślić nieoczekiwane zachowanie, można napisać całkowicie powtarzalny kod, który demonstruje problem, a następnie użyćfunkcji`reprex()`, aby utworzyć kopię kodu, którą można wkleić na forum lub w innej przestrzeni internetowej.
+
+Wyobraź sobie, że próbujesz stworzyć mapę świata z niebieskim morzem i zielonym lądem.
+Możesz po prostu zapytać, jak to zrobić,w jednym z miejsc opisanych w poprzedniej sekcji.
+Jednak prawdopodobnie uzyskasz lepszą odpowiedź, jeśli podasz powtarzalny przykład tego, co dotychczas próbowałeś zrobić.
+Poniższy kod tworzy mapę świata z niebieskim morzem i zielonym lądem, ale ląd nie jest wypełniony:
+
+```r
+library(sf)
+library(spData)
+plot(st_geometry(world), col = "green")
+```
+
+Jeśli opublikujesz ten kod na forum, prawdopodobnie otrzymasz bardziej konkretną i przydatną odpowiedź.
+Na przykład ktoś może odpowiedzieć następującym kodem, który w sposób oczywisty rozwiązuje problem, jak pokazano na rysunku @ref(fig:16-synthesis-reprex):
+
+```r
+library(sf)
+library(spData)
+# use the bg argument to fill in the land
+plot(st_geometry(world), col = "green", bg = "lightblue")
+```
+
+```{r 16-synthesis-reprex, out.width="49%", fig.show="hold", fig.cap="A map of the world with green land, illustrating a question with a reproducible example (left) and the solution (right).", echo=FALSE, message=FALSE, warning=FALSE}
+library(sf)
+library(spData)
+plot(st_geometry(world), col = "green")
+plot(st_geometry(world), col = "green", bg = "lightblue")
+```
+
+Ćwiczenie dla czytelnika: skopiuj powyższy kod, uruchom polecenie`reprex::reprex()`(lub wklej polecenie dowywołania funkcji`reprex()`) i wklej wynik na forum lub w innym miejscu w Internecie.
+
+Zaletą otwartego oprogramowania i współpracy w zakresie geoinformatyki jest to, że generują one ogromną i stale ewoluującą bazę wiedzy, której częścią jest niniejsza książka.
+Pokazanie własnych wysiłków zmierzających do rozwiązania problemu i przedstawienie powtarzalnego przykładu tego problemu jest sposobem na wniesienie wkładu do tej bazy wiedzy.
+
+### Definiowanie i szkicowanie problemu
+
+W niektórych przypadkach może się zdarzyć, że nie uda Ci się znaleźć rozwiązania problemu w Internecie lub sformułować pytania, na które wyszukiwarka mogłaby odpowiedzieć.W takich przypadkach lub podczas
+opracowywania nowej metodologii geokomputacyjnej najlepszym punktem wyjścia może być papier i ołówek (lub odpowiednie narzędzia do szkicowania cyfrowego, takie jak[Excalidraw](https://excalidraw.com/)i[tldraw](https://www.tldraw.com/),które umożliwiają wspólne szkicowanie i szybkie dzielenie się pomysłami).
+Podczas najbardziej kreatywnych wczesnych etapów prac nad opracowaniem metodologii, oprogramowanie*dowolnego rodzaju*może spowolnić proces myślowy i odwrócić uwagę od ważnych abstrakcyjnych rozważań.Wysoce zalecane
+jest również sformułowanie pytania za pomocą matematyki, w odniesieniu do minimalnego przykładu, którego wersje „przed i po” można naszkicować w postaci liczbowej.
+Jeśli posiadasz odpowiednie umiejętności i problem tego wymaga, opisanie podejścia w sposób algebraiczny może w niektórych przypadkach pomóc w opracowaniu skutecznych wdrożeń.
+
+## Co dalej?{#next}
+
+Jak wskazano w sekcji @ref(gaps), książka obejmuje tylko ułamek ekosystemu geograficznego języka R, a jest jeszcze wiele do odkrycia.
+Szybko przeszliśmy od modeli danych geograficznych w rozdziale @ref(spatial-class) do zaawansowanych zastosowań w rozdziale @ref(eco).Sugerowane kierunki
+na przyszłość to utrwalenie nabytych umiejętności, odkrywanie nowych pakietów i podejść do obsługi danych geograficznych oraz stosowanie metod do nowych zbiorów danych i dziedzin.
+W tej sekcji rozwijamy tę ogólną radę, sugerując konkretne „kolejne kroki”, zaznaczoneponiżej**pogrubioną**czcionką.
+
+Oprócz poznania dalszych metod i zastosowań geograficznych w języku R\\index{R}, na przykład w odniesieniu do prac cytowanych w poprzedniej sekcji,logicznym kolejnym krokiem jestpogłębienie zrozumienia**samego**języka**R**.
+Podstawowe klasy języka R,takie jak`data.frame`i`matrix`,stanowią podstawęklas**sf**i**terra**, więc ich studiowanie poprawi zrozumienie danych geograficznych.
+Można to zrobić, korzystając z dokumentów będących częścią języka R, które można znaleźć za pomocą polecenia`help.start()`,oraz dodatkowych zasobów na ten temat, takich jak te autorstwa @wickham\_advanced\_2019 i @chambers\_extending\_2016.
+
+Kolejnym kierunkiem nauki związanym z oprogramowaniem jest**odkrywanie geokomputacji za pomocą innych języków**.
+Istnieją dobre powody, aby uczyć się języka R jako języka geokomputacji, jak opisano w rozdziale @ref(intro), ale nie jest to jedyna opcja.^\[Atuty
+języka R są szczególnie istotne dla naszej definicji geocomputation ze względu na nacisk na powtarzalność naukową, powszechne stosowanie w badaniach akademickich i niezrównane wsparcie dla modelowania statystycznego danych geograficznych.
+Ponadto zalecamy dogłębną naukę jednego języka do geocomputation przed zagłębianiem się w inne języki/frameworki ze względu na koszty związane ze zmianą kontekstu, a R jest doskonałym punktem wyjścia w podróży po geocomputation.
+\]
+*Geocomputation*można studiowaćrównie dogłębnie*za pomocą: Python*\\index{Python},*C++*,*JavaScript*,*Scala*\\index{Scala}lub*Rust*\\index{Rust}.
+Każdy z nich ma rozwijające się możliwości geoprzestrzenne.Na przykład
+[**rasterio**](https://github.com/rasterio/rasterio)to pakiet Python o podobnej funkcjonalności jakpakiet**terra**używany w tej książce.Wprowadzenie do geocomputation za pomocą
+języka[*Python*](https://py.geocompx.org/)można znaleźć wsekcji[*Geocomputation with Python*](https://py.geocompx.org/).
+
+W języku C++ opracowano dziesiątki bibliotek geoprzestrzennych\\index{C++}, w tym dobrze znane biblioteki, takie jak GDAL\\index{GDAL}i GEOS\\index{GEOS}, oraz mniej znane biblioteki, takie jak**[Orfeo Toolbox](https://github.com/orfeotoolbox/OTB)**do przetwarzania danych teledetekcyjnych (rasterowych).
+[**Turf.js**](https://github.com/Turfjs/turf)jest przykładem potencjału geocomputation z wykorzystaniem języka JavaScript.
+[GeoTrellis](https://geotrellis.io/)zapewnia funkcje do pracy z danymi rastrowymi i wektorowymi w języku Scala opartym na Javie.
+[WhiteBoxTools](https://github.com/jblindsay/whitebox-tools)stanowi przykład szybko ewoluującego systemu GIS z wierszem poleceń, zaimplementowanego w języku Rust.
+\\index{Rust}
+\\index{WhiteboxTools}
+Każdy z tych pakietów/bibliotek/języków ma swoje zalety w zakresie geocomputation, a istnieje jeszcze wiele innych do odkrycia, co dokumentuje wyselekcjonowana lista otwartych zasobów geoprzestrzennych[Awesome-Geospatial](https://github.com/sacridini/Awesome-Geospatial).
+
+Geocomputation\\index{geocomputation}tojednakcoś więcejniżtylkooprogramowanie.
+Możemy polecić**zgłębianie i poznawanie nowych tematów badawczych oraz metod**z perspektywy akademickiej i teoretycznej.
+Wiele metod, o których napisano, nie zostało jeszcze wdrożonych.
+Zanim zaczniemy pisać kod, warto zapoznać się z metodami geograficznymi i ich potencjalnymi zastosowaniami.
+Przykładem metod geograficznych, które są coraz częściej wdrażane w R, są strategie próbkowania do zastosowań naukowych.
+Kolejnym krokiem w tym przypadku jest zapoznanie się z odpowiednimi artykułami w tej dziedzinie, takimi jak @brus\_sampling\_2018, do których dołączono odtwarzalny kod i treści samouczka dostępne na[stronie github.com/DickBrus/TutorialSampling4DSM](https://github.com/DickBrus/TutorialSampling4DSM).
+
+## Podejście open source{#benefit}
+
+Jest to książka techniczna, więc logiczne jest, że kolejne kroki, opisane w poprzedniej sekcji, również mają charakter techniczny.
+Jednak w tej ostatniej sekcji warto rozważyć szersze kwestie, które powracają do naszej definicji geocomputation\\index{geocomputation}.
+Jednym z elementów terminu wprowadzonego w rozdziale @ref(intro) było to,że metody geograficzne powinny mieć pozytywny wpływ.
+Oczywiście, jak zdefiniować i zmierzyć „pozytywny”wpływ, jest subiektywnym, filozoficznym pytaniem, które wykracza poza zakres tej książki.
+Niezależnie od Twojego światopoglądu, rozważenie wpływu pracy geokomputacyjnej jest przydatnym ćwiczeniem:
+potencjał pozytywnego wpływu może stanowić silną motywację do dalszej nauki, a z drugiej strony nowe metody mogą otworzyć wiele możliwych obszarów zastosowań.
+Rozważania te prowadzą do wniosku, że geokomputacja jest częścią szerszego „podejścia open source”.
+
+W sekcji @ref(what-is-geocomputation) przedstawiono inne terminy, które oznaczają mniej więcej to samo co geokomputacja, w tym naukę o danych geograficznych\\indeks{data science}(GDS) i „GIScience”.
+ Oba terminy oddają istotę pracy z danymi geograficznymi, ale geocomputation ma swoje zalety: zwięźle oddaje „komputerowy” sposób pracy z danymi geograficznymi, propagowany w niniejszej książce — realizowany w kodzie, a zatem sprzyjający powtarzalności — i opiera się na pożądanych elementach swojej wczesnej definicji [@openshaw_geocomputation_2000]:
+
+- *Kreatywne*wykorzystanie danych geograficznych
+- Zastosowanie do*rzeczywistych problemów*
+- Tworzenie narzędzi „naukowych”
+- Powtarzalność\\indeks{reproducibility}
+
+Dodaliśmy ostatni element: powtarzalność była ledwo wspomniana we wczesnych pracach dotyczących geocomputation, ale można przedstawić mocne argumenty przemawiające za tym, że jest ona istotnym składnikiem dwóch pierwszych elementów.
+
+Powtarzalność\\indeks{reproducibility}:
+
+- Zachęca do*kreatywności*poprzez przeniesienie uwagi z podstaw (które są łatwo dostępne dzięki wspólnemu kodowi) na zastosowania
+- Zniechęca ludzi do „wynajdywania koła na nowo”: nie ma potrzeby powtarzania tego, co zrobili inni, jeśli ich metody mogą być wykorzystane przez innych
+- Sprawia, że badania są bardziej przydatne w rzeczywistych zastosowaniach, umożliwiając każdemu w dowolnej branży stosowanie swoich metod w nowych obszarach.
+
+Jeśli powtarzalność jest kluczową zaletą geokomputacji (lub GIS z wierszem poleceń), warto zastanowić się, co sprawia, że jest ona powtarzalna.
+To prowadzi nas do „podejścia open source”, które składa się z trzech głównych elementów:
+
+- Interfejs wiersza poleceń\\indeks{command line interface}(CLI), zachęcający do udostępniania i powielania skryptów rejestrujących prace geograficzne
+- Oprogramowanie open source, które może być sprawdzane i potencjalnie ulepszane przez każdego na świecie
+- Aktywna społeczność użytkowników i programistów, która współpracuje i samoorganizuje się w celu tworzenia uzupełniających się i modułowych narzędzi
+
+Podobnie jak termin geocomputation\\index{geocomputation}, podejście open source jest czymś więcej niż tylko techniczną jednostką.Jest
+to społeczność złożona z osób, które codziennie współpracują, mając wspólne cele: tworzenie wysokowydajnych narzędzi, wolnych od ograniczeń komercyjnych lub prawnych, dostępnych dla każdego.
+Podejście open source do pracy z danymi geograficznymi ma zalety, które wykraczają poza techniczne aspekty działania oprogramowania, zachęcając do nauki, współpracy i efektywnego podziału pracy.
+
+Istnieje wiele sposobów zaangażowania się w tę społeczność, zwłaszcza wraz z pojawieniem się serwisów hostingowych kodu, takich jak GitHub, które zachęcają do komunikacji i współpracy.
+Dobrym punktem wyjścia jest po prostu przejrzenie niektórych kodów źródłowych, „problemów” i „commitów” w interesującym pakiecie geograficznym.
+Szybki rzut oka narepozytorium GitHub`r-spatial/sf`, które zawiera kod leżący u podstawpakietu**sf**\\index{sf}, pokazuje, że ponad 100 osób przyczyniło się do powstania bazy kodu i dokumentacji.
+Kolejne dziesiątki osób wniosły swój wkład, zadając pytania i uczestnicząc w tworzeniu pakietów „upstream”, z którychkorzysta**sf**.W systemie[śledzenia](https://github.com/r-spatial/sf/issues)
+[problemów](https://github.com/r-spatial/sf/issues)zamknięto ponad 1500 zgłoszeń, co stanowi ogromną ilość pracy mającą na celu uczynienie**sf**szybszym, bardziej stabilnym i przyjaznym dla użytkownika.
+Ten przykład, pochodzący zaledwie z jednego pakietu spośród dziesiątek innych, pokazuje skalę intelektualnych działań mających na celu uczynienie języka R wysoce efektywnym i stale ewoluującym językiem do obliczeń geograficznych.
+
+Obserwowanie nieustannych działań rozwojowych na forach publicznych, takich jak GitHub, jest pouczające, ale jeszcze bardziej satysfakcjonujące jest aktywne uczestnictwo w nich.Jest
+to jedna z największych zalet podejścia open source: zachęca ludzi do zaangażowania się.
+Niniejsza książka jest wynikiem podejścia open source:
+jej motywacją były niesamowite postępy w zakresie możliwości geograficznych języka R w ciągu ostatnich dwóch dekad, ale praktycznie umożliwiły ją dialog i dzielenie się kodem na platformach współpracy.
+Mamy nadzieję, że oprócz rozpowszechniania przydatnych metod pracy z danymi geograficznymi, książka ta zainspiruje Państwa do przyjęcia bardziej otwartego podejścia.
+
+
