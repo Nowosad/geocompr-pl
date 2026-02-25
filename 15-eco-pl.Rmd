@@ -1,0 +1,645 @@
+# Ekologia{#eco}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## Wymagania wstępne{-}
+
+W niniejszym rozdziale zakładamy, że czytelnik posiada solidną wiedzę na temat analizy i przetwarzania danych geograficznych, omówionych w rozdziałach @ref(spatial-class) do @ref(geometry-operations).
+W rozdziale wykorzystano mosty do oprogramowania GIS oraz przestrzenną walidację krzyżową, omówione odpowiednio w rozdziałach @ref(gis) i @ref(spatial-cv).
+
+W rozdziale wykorzystano następujące pakiety:
+
+```{r 15-eco-1, message=FALSE}
+library(sf)
+library(terra)
+library(dplyr)
+library(data.table)        # fast data frame manipulation (used by mlr3)
+library(mlr3)              # machine learning (see Chapter 12)
+library(mlr3spatiotempcv)  # spatiotemporal resampling
+library(mlr3tuning)        # hyperparameter tuning package
+library(mlr3learners)      # interface to most important machine learning pkgs
+library(paradox)           # defining hyperparameter spaces
+library(ranger)            # random forest package
+library(qgisprocess)       # bridge to QGIS (Chapter 10)
+library(tree)              # decision tree package
+library(vegan)             # community ecology package
+```
+
+## Wprowadzenie
+
+W niniejszym rozdziale modelujemy gradient florystyczny oaz mgielnych, aby ujawnić charakterystyczne pasy roślinności, które są wyraźnie kontrolowane przez dostępność wody.
+Studium przypadku stanowi okazję do połączenia i rozszerzenia koncepcji przedstawionych w poprzednich rozdziałach, aby jeszcze bardziej doskonalić umiejętności korzystania z języka R do obliczeń geograficznych.
+
+Oazy mgielne, lokalnie nazywane*lomas*, to formacje roślinne występujące w górach wzdłuż pustynnych wybrzeży Peru i Chile.
+ Podobne ekosystemy można znaleźć również w innych miejscach, m.in. na pustyniach Namibii oraz wzdłuż wybrzeży Jemenu i Omanu [@galletti_land_2016] .
+Pomimo suchych warunków i niskich opadów wynoszących średnio około 30-50 mm rocznie, osadzanie się mgły zwiększa ilość wody dostępnej dla roślin podczas australijskiej zimy, co powoduje, że południowe zbocza gór wzdłuż pasma przybrzeżnego Peru są zielone.
+Mgła, która tworzy się poniżej inwersji temperatury spowodowanej zimnym prądem Humboldta w australijskiej zimie, nadaje nazwę temu siedlisku.
+ Co kilka lat zjawisko El Niño przynosi ulewne deszcze do tego spieczonego słońcem środowiska, dając sadzonkom drzew szansę na rozwinięcie korzeni wystarczająco długich, aby przetrwać kolejne suche warunki [@dillon_lomas_2003] .
+
+Niestety, oazy mgły są poważnie zagrożone, głównie z powodu rolnictwa i antropogenicznych zmian klimatycznych
+. Dowody dotyczące składu i rozmieszczenia przestrzennego rodzimej flory mogą wspierać wysiłki na rzecz ochrony pozostałych fragmentów oaz mgielnych [@muenchow_predictive_2013; @muenchow_soil_2013] .
+
+W tym rozdziale przeanalizujesz skład i rozmieszczenie przestrzenne roślin naczyniowych (w tym przypadku głównie roślin kwiatowych) na południowym zboczu góry Mongon,góry*typu lomas*w pobliżu Casma na środkowym północnym wybrzeżu Peru (rysunek @ref(fig:study-area-mongon)).
+ Podczas badań terenowych na górze Mongon zarejestrowano wszystkie rośliny naczyniowe żyjące na 100 losowo wybranych działkach o wymiarach 4 na 4 m ^2 ^ w południowej zimie 2011 r. [@muenchow_predictive_2013] .
+Pobieranie próbek zbiegło się w czasie z silnym zjawiskiem La Nina w tym roku, jak pokazują dane opublikowane przez Narodową Administrację Oceaniczną i Atmosferyczną ([NOAA](https://origin.cpc.ncep.noaa.gov/products/analysis_monitoring/ensostuff/ONI_v5.php)).
+Doprowadziło to do jeszcze wyższego niż zwykle poziomu suchości na pustynnym wybrzeżu i zwiększonej aktywności mgły na południowych zboczach peruwiańskichgór*Lomas*.
+
+```{r study-area-mongon, echo=FALSE, fig.cap="The Mt. Mongon study area. Figure taken from Muenchow, Schratz, and Brenning (2017).", out.width="60%", fig.scap="The Mt. Mongon study area."}
+knitr::include_graphics("images/15_study_area_mongon.png")
+# knitr::include_graphics("https://user-images.githubusercontent.com/1825120/38989956-6eae7c9a-43d0-11e8-8f25-3dd3594f7e74.png")
+```
+
+W niniejszym rozdziale pokazano również, jak zastosować techniki omówione w poprzednich rozdziałach w ważnej dziedzinie stosowanej: ekologii.
+W szczególności:
+
+- załadujemy potrzebne dane i obliczymy predyktory środowiskowe (sekcja @ref(data-and-data-preparation))
+
+,
+
+- wyodrębnimy główny gradient florystyczny z naszej macierzy składu gatunkowego za pomocą techniki redukcji wymiarów (ordinations\\index{ordination}; Sekcja @ref(nmds))
+- Modelować pierwszą oś ordynacji, tj. gradient florystyczny, jako funkcję predyktorów środowiskowych, takich jak wysokość, nachylenie, obszar zlewni\\index{catchment area}i NDVI\\index{NDVI}(Sekcja @ref(modeling-the-floristic-gradient)).
+  W tym celu wykorzystamy model losowego lasu\\index{random forest}— bardzo popularnyalgorytmuczenia maszynowego\\index{machine learning}. Aby zagwarantować optymalną prognozę, zaleca się wcześniejsze dostrojenie hiperparametrów\\index{hyperparameter}za pomocą przestrzennej walidacji krzyżowej\\index{cross-validation!spatial CV}(patrz sekcja @ref(svm)).
+- Sporządź mapę przestrzennego rozmieszczenia składu florystycznego w dowolnym miejscu obszaru badań (sekcja @ref(predictive-mapping)).
+
+## Dane i przygotowanie danych
+
+Wszystkie dane potrzebne do dalszych analiz są dostępne wpakiecie**spDataLarge**.
+
+```{r 15-eco-2}
+data("study_area", "random_points", "comm", package = "spDataLarge")
+dem = rast(system.file("raster/dem.tif", package = "spDataLarge"))
+ndvi = rast(system.file("raster/ndvi.tif", package = "spDataLarge"))
+```
+
+`study_area`to wielokąt przedstawiający zarys obszaru badań, a`random_points`toobiekt`sf`zawierający 100 losowo wybranych lokalizacji.
+`comm` to macierz społeczności w formacie danych szerokich [@wickham_tidy_2014] , gdzie wiersze przedstawiają odwiedzone lokalizacje w terenie, a kolumny zaobserwowane gatunki.^ [W statystyce nazywa się to również tabelą kontyngencji lub tabelą krzyżową.]
+
+```{r 15-eco-3, eval=FALSE}
+# sites 35 to 40 and corresponding occurrences of the first five species in the
+# community matrix
+comm[35:40, 1:5]
+#>    Alon_meri Alst_line Alte_hali Alte_porr Anth_eccr
+#> 35         0         0         0       0.0     1.000
+#> 36         0         0         1       0.0     0.500
+#> 37         0         0         0       0.0     0.125
+#> 38         0         0         0       0.0     3.000
+#> 39         0         0         0       0.0     2.000
+#> 40         0         0         0       0.2     0.125
+```
+
+Wartości reprezentują pokrycie gatunkowe na stronę i zostały zapisane jako obszar pokryty przez gatunek w stosunku do powierzchni strony (%; należy pamiętać, że jedna strona może mieć >100% z powodu nakładania się pokrycia między poszczególnymi roślinami).
+Nazwy wierszy`comm`odpowiadająkolumnie`id`w`random_points`.
+`dem`to cyfrowy model wysokościowy\\indeks{digital elevation model}(DEM) dla obszaru badań, a`ndvi`to znormalizowany wskaźnik różnicy wegetacji (NDVI) obliczony na podstawie kanałów czerwonego i bliskiej podczerwieni obrazu Landsat (patrz sekcja @ref(local-operations) i`?spDataLarge::ndvi.tif`).
+Wizualizacja danych pomaga lepiej je poznać, jak pokazano na rysunku @ref(fig:sa-mongon), gdzie model cyfrowy wysokości terenu (`dem`)jest nałożony na indeks różnicy wegetacji (`random_points`)i indeks różnicy wegetacji`study_area`).
+
+\\index{hillshade}
+
+
+
+```{r sa-mongon, echo=FALSE, message=FALSE, fig.cap="Study mask (polygon), location of the sampling sites (black points) and DEM in the background.", fig.scap="Study mask, location of the sampling sites."}
+# hs = terra::shade(terra::terrain(dem, v = "slope", unit = "radians"),
+#                 terra::terrain(dem, v = "aspect", unit = "radians"),
+#                 10, 200)
+# library(tmap)
+# tm = tm_shape(hs) +
+#   tm_grid(n.x = 3, n.y = 3) +
+#   tm_raster(col.scale = tm_scale_continuous(values = rev(hcl.colors(99, "Grays"))),
+#             col.legend = tm_legend_hide()) +
+#   tm_shape(dem) +
+#   tm_raster(col_alpha = 0.5,
+#             col.scale = tm_scale_continuous(n = 11, values = terrain.colors(50)),
+#             col.legend = tm_legend(title = "m asl", reverse = TRUE)) +
+#   tm_shape(study_area) +
+#   tm_borders() +
+#   tm_shape(random_points) +
+#   tm_symbols(col = "black", size = 0.2) +
+#   tm_layout(legend.position = tm_pos_auto_out())
+# tmap_save(tm, "images/15_sa_mongon_sampling.png",
+#           width = 12, height = 7, units = "cm")
+
+knitr::include_graphics("images/15_sa_mongon_sampling.png")
+```
+
+Kolejnym krokiem jest obliczenie zmiennych, które są potrzebne nie tylko do modelowania i mapowania predykcyjnego (patrz sekcja @ref(predictive-mapping)), ale także do wyrównaniaosinie-metrycznego skalowania wielowymiarowego (NMDS)\\index{NMDS}z głównym gradientem w badanym obszarze, odpowiednio wysokością i wilgotnością (patrz sekcja @ref(nmds)).
+
+W szczególności obliczamy nachylenie zlewni i powierzchnię zlewni\\index{catchment area}na podstawie cyfrowego modelu wysokościowego\\index{digital elevation model}przy użyciu mostków R-GIS (patrz rozdział @ref(gis)).
+Krzywizny mogą również stanowić cenne predyktory, a w sekcji Ćwiczenia można dowiedzieć się, jak wpływają one na wynik modelowania.
+
+Aby obliczyć powierzchnię zlewni\\index{catchment area}i nachylenie zlewni, możemy skorzystać zfunkcji`sagang:sagawetnessindex`.^\[Trzeba przyznać, że nieco niezadowalające jest to, że jedynym sposobem, aby dowiedzieć się, że`sagawetnessindex`oblicza pożądane atrybuty terenu,jest znajomość SAGA\\index{SAGA}.\]
+`qgis_show_help()`zwraca wszystkieparametryfunkcji\\index{function}i wartości domyślne określonego geoalgorytmu\\index{geoalgorithm}.
+Tutaj przedstawiamy tylko wybór kompletnych wyników.
+
+```{r 15-eco-5, eval=FALSE}
+# if not already done, enable the saga next generation plugin
+qgisprocess::qgis_enable_plugins("processing_saga_nextgen")
+# show help
+qgisprocess::qgis_show_help("sagang:sagawetnessindex")
+#> Saga wetness index (sagang:sagawetnessindex)
+#> ...
+#> ----------------
+#> Arguments
+#> ----------------
+#>
+#> DEM: Elevation
+#> 	Argument type:	raster
+#> 	Acceptable values:
+#> 		- Path to a raster layer
+#> ...
+#> SLOPE_TYPE: Type of Slope
+#> 	Argument type:	enum
+#> 	Available values:
+#> 		- 0: [0] local slope
+#> 		- 1: [1] catchment slope
+#> ...
+#> AREA: Catchment area
+#> 	Argument type:	rasterDestination
+#> 	Acceptable values:
+#> 		- Path for new raster layer
+#>...
+#> ----------------
+#> Outputs
+#> ----------------
+#>
+#> AREA: <outputRaster>
+#> 	Catchment area
+#> SLOPE: <outputRaster>
+#> 	Catchment slope
+#> ...
+```
+
+Następnie możemy określić potrzebne parametry za pomocą argumentów nazwanych R (patrz sekcja @ref(rqgis)).
+Należy pamiętać, żedo określenia rastru wejściowego`DEM`można użyć ścieżki do pliku na dysku lub`SpatRaster`znajdującego się wglobalnym środowiskuR\\index{R}(patrz sekcja @ref(rqgis)).
+Określenie wartości 1 jako`SLOPE_TYPE`gwarantuje, że algorytm zwróci nachylenie zlewni.
+Wynikowe rastrowe pliki\\index{raster}są zapisywane w plikach tymczasowych zrozszerzeniem`.sdat`, które jest natywnymformatem rastrowymSAGA\\index{SAGA}.
+
+```{r 15-eco-6, eval=FALSE}
+# environmental predictors: catchment slope and catchment area
+ep = qgisprocess::qgis_run_algorithm(
+  alg = "sagang:sagawetnessindex",
+  DEM = dem,
+  SLOPE_TYPE = 1,
+  SLOPE = tempfile(fileext = ".sdat"),
+  AREA = tempfile(fileext = ".sdat"),
+  .quiet = TRUE)
+```
+
+Zwraca to listę o nazwie`ep`zawierającą ścieżki do obliczonych rastrów wyjściowych.
+Wczytamy obszar zlewni oraz nachylenie zlewni do wielowarstwowegoobiektu`SpatRaster`(patrz sekcja @ref(raster-classes)).
+Dodatkowo dodamy do niego dwa kolejne obiekty rastrowe, a mianowicie`dem`i`ndvi`.
+
+```{r 15-eco-7, eval=FALSE}
+# read in catchment area and catchment slope
+ep = ep[c("AREA", "SLOPE")] |>
+  unlist() |>
+  rast()
+names(ep) = c("carea", "cslope") # assign better names
+origin(ep) = origin(dem) # make sure rasters have the same origin
+ep = c(dem, ndvi, ep) # add dem and ndvi to the multi-layer SpatRaster object
+```
+
+Ponadtowartościindeksu zlewni{catchment area}są silnie przesunięte w prawo (`hist(ep$carea)`).
+Transformacja log10 sprawia, że rozkład staje się bardziej normalny.
+
+```{r 15-eco-8, eval=FALSE}
+ep$carea = log10(ep$carea)
+```
+
+Dla wygody czytelnika dodaliśmy`ep`do**spDataLarge**:
+
+```{r 15-eco-9, cache.lazy=FALSE}
+ep = rast(system.file("raster/ep.tif", package = "spDataLarge"))
+```
+
+Na koniec możemy wyodrębnić atrybuty terenu do naszych obserwacji terenowych (patrz również sekcja @ref(raster-extraction)).
+
+```{r 15-eco-10, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE}
+ep_rp = terra::extract(ep, random_points, ID = FALSE)
+random_points = cbind(random_points, ep_rp)
+```
+
+## Redukcja wymiarowości{#nmds}
+
+Ordinacje\\index{ordination}są popularnym narzędziem w naukach o roślinności, służącym do wyodrębniania głównych informacji, często odpowiadających gradientom ekologicznym, z dużych macierzy gatunków-parcel, wypełnionych głównie zerami.Są one
+jednak również wykorzystywane w teledetekcji\\index{remote sensing}, naukach o glebie, geomarketingu\\index{geomarketing}i wielu innych dziedzinach.
+Jeśli nie znasztechnikordynacji\\index{ordination}lub potrzebujesz powtórki, zajrzyj na[stronę internetową Michaela W. Palmera](https://ordination.okstate.edu/overview.htm), gdzie znajdziesz krótkie wprowadzenie do popularnych technik ordynacji w ekologii, oraz na stronę @borcard\_numerical\_2011, gdzie dowiesz się więcej o tym, jak stosować te techniki w języku R.Bardzo pomocnym źródłem informacji
+jest również dokumentacja pakietu**vegan**\\index{vegan (package)}(`vignette(package = "vegan")`).
+
+Analiza głównych składowych (PCA\\index{PCA}) jest prawdopodobnie najbardziej znanątechnikąordynacji\\index{ordination}.Jest
+to doskonałe narzędzie do redukcji wymiarowości, jeśli można oczekiwać liniowych zależności między zmiennymi, a brak wspólnej zmiennej w dwóch wykresach (obserwacjach) można uznać za podobieństwo.W przypadku danych dotyczących
+roślinności rzadko ma to miejsce.
+
+Po pierwsze, obecność rośliny często podlega jednokierunkowej, tj. nieliniowej zależności wzdłuż gradientu (np. wilgotności, temperatury lub zasolenia) z wartością szczytową w najbardziej sprzyjających warunkach i spadkiem w kierunku warunków niekorzystnych.
+
+Po drugie, wspólny brak gatunku na dwóch działkach nie jest wskazówką podobieństwa.
+Załóżmy, że gatunek rośliny nie występuje w najsuchszych (np. na ekstremalnej pustyni) i najbardziej wilgotnych lokalizacjach (np. na sawannie drzewiastej) naszego badania.
+Wówczas naprawdę powinniśmy powstrzymać się od uznania tego za podobieństwo, ponieważ jest bardzo prawdopodobne, że jedyną wspólną cechą tych dwóch zupełnie różnych środowisk pod względem składu florystycznego jest brak gatunków (z wyjątkiem rzadkich gatunków wszechobecnych).
+
+NMDS\\index{NMDS} jest popularną techniką redukcji wymiarów stosowaną w ekologii [@vonwehrden_pluralism_2009] .
+NMDS\\index{NMDS}redukuje różnice oparte na rankingu między odległościami między obiektami w macierzy pierwotnej a odległościami między obiektami uporządkowanymi.
+Różnica jest wyrażana jako stres.
+Im niższa wartość stresu, tym lepsze uporządkowanie, tj. niskowymiarowa reprezentacja macierzy pierwotnej.
+ Wartości stresu poniżej 10 oznaczają doskonałe dopasowanie, wartości stresu około 15 są nadal dobre, a wartości powyżej 20 oznaczają słabe dopasowanie [@mccune_analysis_2002] .
+W języku Rfunkcja`metaMDS()`pakietu**vegan**\\index{vegan (package)}może wykonać NMDS.
+Jako dane wejściowe oczekuje macierzy społeczności z lokalizacjami w wierszach i gatunkami w kolumnach.
+Często ordynacje\\index{ordination}wykorzystujące dane dotyczące obecności/braku obecności dają lepsze wyniki (pod względem wyjaśnionej wariancji), choć oczywiście kosztem mniej informacyjnej macierzy wejściowej (zobacz także Ćwiczenia).
+`decostand()`konwertuje obserwacje numeryczne na obecności i braki obecności,gdzie 1 oznacza występowanie gatunku, a 0 brak gatunku.
+Techniki ordynacji, takie jak NMDS\\index{NMDS},wymagają co najmniej jednej obserwacji na lokalizację.
+W związku z tym musimy odrzucić wszystkie lokalizacje, w których nie znaleziono żadnych gatunków.
+
+```{r 15-eco-11}
+# presence-absence matrix
+pa = vegan::decostand(comm, "pa")  # 100 rows (sites), 69 columns (species)
+# keep only sites in which at least one species was found
+pa = pa[rowSums(pa) != 0, ]  # 84 rows, 69 columns
+```
+
+Wynikowa macierz służy jako dane wejściowe dla NMDS\\index{NMDS}.
+`k`określa liczbę osi wyjściowych, w tym przypadku ustawioną na 4.^\[
+Jednym ze sposobów wyboru`k`jest wypróbowanie wartości`k` między 1 a 6, a następnie użycie wyniku, który daje najlepszą wartość stresu [@mccune_analysis_2002] .
+\]
+NMDS\\index{NMDS}to procedura iteracyjna, która w każdym kroku stara się upodobnić przestrzeń porządkową do macierzy wejściowej.
+Aby zapewnić zbieżność algorytmu, ustawiliśmy liczbę kroków na 500 za pomocąparametru`try`.
+
+```{r 15-eco-12, eval=FALSE, message=FALSE}
+set.seed(25072018)
+nmds = vegan::metaMDS(comm = pa, k = 4, try = 500)
+nmds$stress
+#> ...
+#> Run 498 stress 0.08834745
+#> ... Procrustes: rmse 0.004100446  max resid 0.03041186
+#> Run 499 stress 0.08874805
+#> ... Procrustes: rmse 0.01822361  max resid 0.08054538
+#> Run 500 stress 0.08863627
+#> ... Procrustes: rmse 0.01421176  max resid 0.04985418
+#> *** Solution reached
+#> 0.08831395
+```
+
+```{r 15-eco-13, eval=FALSE, echo=FALSE}
+saveRDS(nmds, "extdata/15-nmds.rds")
+```
+
+```{r 15-eco-14, include=FALSE}
+nmds = readRDS("extdata/15-nmds.rds")
+```
+
+Wartość stresu wynosząca 9 oznacza bardzo dobry wynik, co oznacza, że zredukowana przestrzeń ordynacyjna reprezentuje znaczną większość wariancji macierzy wejściowej.
+Ogólnie rzecz biorąc, NMDS\\index{NMDS}umieszcza obiekty, które są bardziej podobne (pod względem składu gatunkowego),bliżej siebie w przestrzeni ordynacyjnej.
+Jednak w przeciwieństwie do większości innych technikordynacyjnych\\index{ordination} , osie są arbitralne i niekoniecznie uporządkowane według ważności [@borcard_numerical_2011] .
+ Wiemy jednak już, że wilgotność stanowi główny gradient w badanym obszarze [@muenchow_predictive_2013;@muenchow_rqgis:_2017] .
+Ponieważ wilgotność jest silnie skorelowana z wysokością nad poziomem morza, obracamy osie NMDS\\index{NMDS}zgodnie z wysokością nad poziomem morza (więcej szczegółów na temat obracania osi NMDSmożna znaleźć równieżna stronie`?MDSrotate`).
+Wykres wyników pokazuje, że pierwsza oś jest, zgodnie z zamierzeniami, wyraźnie powiązana z wysokością nad poziomem morza (rysunek @ref(fig:xy-nmds)).
+
+```{r xy-nmds-code, fig.cap="Plotting the first NMDS axis against altitude.", fig.scap="First NMDS axis against altitude plot.", fig.asp=1, out.width="60%", eval=FALSE}
+elev = dplyr::filter(random_points, id %in% rownames(pa)) |>
+  dplyr::pull(dem)
+# rotating NMDS in accordance with altitude (proxy for humidity)
+rotnmds = vegan::MDSrotate(nmds, elev)
+# extracting the first two axes
+sc = vegan::scores(rotnmds, choices = 1:2, display = "sites")
+# plotting the first axis against altitude
+plot(y = sc[, 1], x = elev, xlab = "elevation in m",
+     ylab = "First NMDS axis", cex.lab = 0.8, cex.axis = 0.8)
+```
+
+```{r xy-nmds, fig.cap="Plotting the first NMDS axis against altitude.", fig.scap="First NMDS axis against altitude plot.", fig.asp=1, out.width="60%", message=FALSE, echo=FALSE}
+elev = dplyr::filter(random_points, id %in% rownames(pa)) |>
+  dplyr::pull(dem)
+# rotating NMDS in accordance with altitude (proxy for humidity)
+rotnmds = vegan::MDSrotate(nmds, elev)
+# extracting the first two axes
+sc = vegan::scores(rotnmds, choices = 1:2, display = "sites")
+knitr::include_graphics("images/15_xy_nmds.png")
+```
+
+```{r 15-eco-15, eval=FALSE, echo=FALSE}
+# scores and rotated scores in one figure
+p1 = xyplot(scores(rotnmds, display = "sites")[, 2] ~
+              scores(rotnmds, display = "sites")[, 1], pch = 16,
+             col = "lightblue", xlim = c(-3, 2), ylim = c(-2, 2),
+             xlab = list("Dimension 1", cex = 0.8),
+             ylab = list("Dimension 2", cex = 0.8),
+             scales = list(x = list(relation = "same", cex = 0.8),
+                           y = list(relation = "same", cex = 0.8),
+                           # ticks on top are suppressed
+                           tck = c(1, 0),
+                           # plots axes labels only in row and column 1 and 4
+                           alternating = c(1, 0, 0, 1),
+                           draw = TRUE),
+             # we have to use the same colors in the legend as used for the plot
+             # points
+             par.settings = simpleTheme(col = c("lightblue", "salmon"),
+                                        pch = 16, cex = 0.9),
+             # also the legend point size should be somewhat smaller
+             auto.key = list(x = 0.7, y = 0.9, text = c("unrotated", "rotated"),
+                             between = 0.5, cex = 0.9),
+             panel = function(x, y, ...) {
+                           # Plot the points
+                           panel.points(x, y, cex = 0.6, ...)
+                           panel.points(x = scores(nmds, display = "sites")[, 1],
+                                        y = scores(nmds, display = "sites")[, 2],
+                                        col = "salmon", pch = 16, cex = 0.6)
+                           panel.arrows(x0 = scores(nmds, display = "sites")[, 1],
+                                        y0 = scores(nmds, display = "sites")[, 2],
+                                        x1 = x,
+                                        y1 = y,
+                                        length = 0.04,
+                                        lwd = 0.4)
+            })
+
+plot(scores(nmds, choices = 1:2, display = "sites"))
+points(scores(rotnmds, choices = 1:2, display = "sites"), col = "lightblue",
+       pch = 16)
+
+sc = scores(nmds, choices = 1:2, display = "sites") |> as.data.frame()
+sc$id = rownames(sc) |> as.numeric()
+rp = inner_join(select(sc, id), st_drop_geometry(random_points))
+fit_1 = envfit(nmds, select(rp, dem))
+fit_2 = envfit(rotnmds, select(rp, dem))
+par(mfrow = c(1, 2))
+plot(nmds, display = "sites")
+plot(fit_1)
+plot(rotnmds, display = "sites")
+plot(fit_2)
+```
+
+Wyniki pierwszejosiNMDS\\index{NMDS}reprezentują różne formacje roślinności, tj. gradient florystyczny, występujący wzdłuż zbocza góry Mongon.
+Aby je wizualizować przestrzennie, możemy modelowaćwynikiNMDS\\index{NMDS}przy użyciu wcześniej utworzonych predyktorów (sekcja @ref(data-and-data-preparation)) i wykorzystać wynikowy model do mapowania predykcyjnego (patrz sekcja @ref(modeling-the-floristic-gradient)).
+
+## Modelowanie gradientu florystycznego
+
+Aby przewidzieć gradient florystyczny w przestrzeni, używamy modelulasu losowego\\index{random forest} [@breiman_random_2001] . Modele
+lasów losowych\\index{random forest} są często stosowane w modelowaniu środowiskowym i ekologicznym i często zapewniają najlepsze wyniki pod względem wydajności predykcyjnej [@hengl_random_2018;@schratz_hyperparameter_2019] .
+W tym miejscu pokrótce przedstawiamy drzewa decyzyjne i bagging, ponieważ stanowią one podstawę lasów losowych\\index{random forest}.
+W celu uzyskania bardziej szczegółowego opisu lasów losowych\\index{random forest}i powiązanych technikodsyłamy czytelnika do @james\_introduction\_2013.
+
+Aby przedstawić drzewa decyzyjne na przykładzie, najpierw tworzymy macierz odpowiedzi-predyktorów, łącząc obróconewynikiNMDS\\index{NMDS}z obserwacjami terenowymi (`random_points`).Wynikową
+ramkę danych wykorzystamy równieżpóźniejdomodelowania**mlr3**\\index{mlr3 (package)}.
+
+```{r 15-eco-16, message=FALSE, eval=TRUE}
+# construct response-predictor matrix
+# id- and response variable
+rp = data.frame(id = as.numeric(rownames(sc)), sc = sc[, 1])
+# join the predictors (dem, ndvi and terrain attributes)
+rp = inner_join(random_points, rp, by = "id")
+```
+
+Drzewa decyzyjne dzielą przestrzeń predyktorów na kilka regionów.
+Aby to zilustrować, zastosujemy drzewo decyzyjne do naszych danych, wykorzystując wyniki pierwszejosiNMDS\\index{NMDS}jako odpowiedź (`sc`) i wysokość (`dem`) jako jedyny predyktor.
+
+```{r 15-eco-17, eval=FALSE}
+tree_mo = tree::tree(sc ~ dem, data = rp)
+plot(tree_mo)
+text(tree_mo, pretty = 0)
+```
+
+
+
+```{r tree, echo=FALSE, fig.cap="Simple example of a decision tree with three internal nodes and four terminal nodes.", out.width="60%", fig.scap="Simple example of a decision tree."}
+# tree_mo = tree::tree(sc ~ dem, data = rp)
+# png("images/15_tree.png", width = 1100, height = 700, units = "px", res = 300)
+# par(mar = rep(1, 4))
+# plot(tree_mo)
+# text(tree_mo, pretty = 0)
+# dev.off()
+knitr::include_graphics("images/15_tree.png")
+```
+
+Wynikowe drzewo składa się z trzech węzłów wewnętrznych i czterech węzłów końcowych (rysunek @ref(fig:tree)).
+Pierwszy węzeł wewnętrzny u góry drzewa przypisuje wszystkie obserwacje poniżej 328,5 m do lewej gałęzi, a wszystkie pozostałe obserwacje do gałęzi prawej.
+Obserwacje należące do lewej gałęzi mają średniwynikNMDS\\index{NMDS}wynoszący -1,198.
+Ogólnie rzecz biorąc, drzewo można interpretować w następujący sposób: im wyższa wysokość, tym wyższywynikNMDS\\index{NMDS}.Oznacza
+to, że proste drzewo decyzyjne ujawniło już cztery odrębne zespoły florystyczne.
+Bardziej szczegółową interpretację można znaleźć w sekcji @ref(predictive-mapping).
+Drzewa decyzyjne mają tendencję do nadmiernego dopasowania\\index{overfitting} , to znaczy zbyt dokładnie odzwierciedlają dane wejściowe, w tym szumy, co z kolei prowadzi do złych wyników prognozowania [Sekcja @ref(intro-cv), @james_introduction_2013] .
+Agregacja bootstrapowa (bagging) jest techniką zespołową, która może pomóc w rozwiązaniu tego problemu.
+Techniki zespołowe polegają po prostu na łączeniu prognoz wielu modeli.
+W ten sposób bagging pobiera powtarzające się próbki z tych samych danych wejściowych i uśrednia prognozy.Zmniejsza
+to wariancję i nadmierne dopasowanie\\index{overfitting},co skutkuje znacznie lepszą dokładnością prognoz w porównaniu z drzewami decyzyjnymi.
+Wreszcie, lasy losowe\\index{random forest} rozszerzają i ulepszają bagging poprzez dekorelację drzew, co jest pożądane, ponieważ uśrednianie prognoz silnie skorelowanych drzew wykazuje większą wariancję, a tym samym mniejszą wiarygodność niż uśrednianie prognoz drzew dekorelowanych [@james_introduction_2013] .
+Aby to osiągnąć, lasy losowe\\index{random forest}wykorzystują bagging, ale w przeciwieństwie do tradycyjnego baggingu, w którym każde drzewo może wykorzystywać wszystkie dostępne predyktory, lasy losowe wykorzystują tylko losową próbkę wszystkich dostępnych predyktorów.
+
+<!--
+Przypomnijmy, że bagging jest po prostu szczególnym przypadkiem lasu losowego z m = p. Dlatego funkcja randomForest() może być używana zarówno do tworzenia lasów losowych, jak i baggingu.
+Argument mtry=13 oznacza, że wszystkie 13 predyktorów powinno być brane pod uwagę
+dla każdego podziału drzewa — innymi słowy, że należy wykonać bagging.
+@james_introduction_2013
+-->
+
+### **mlr3**elementy składowe
+
+Kod w tej sekcji w dużej mierze odpowiada krokom, które przedstawiliśmy w sekcji @ref(svm).
+Jedyne różnice są następujące:
+
+1. Zmienna odpowiedzi jest numeryczna, dlategozadanieregresji\\index{regression}zastąpizadanieklasyfikacji\\index{classification}z sekcji @ref(svm)
+2. Zamiast AUROC\\index{AUROC}, który może być stosowany tylko dla zmiennych odpowiedzi kategorycznych,jako miarę wydajnościzastosujemy średni błąd kwadratowy (RMSE\\index{RMSE}).
+3. Zamiast Support Vector Machine\\index{SVM}stosujemymodelRandom Forest\\index{random forest}, który naturalnie wiąże się z innymi hiperparametrami\\index{hyperparameter}
+4. . Ocena miary wydajności
+5. 
+6. z redukcją błędu systematycznego pozostawiamy czytelnikowi jako ćwiczenie (patrz Ćwiczenia).
+   Zamiast tego pokazujemy, jak dostroić hiperparametry\\index{hyperparameter}dla prognoz (przestrzennych).
+
+Należy pamiętać, że do uzyskania oszacowań wydajności o zmniejszonym odchyleniu konieczne było użycie 125 500 modeli przy zastosowaniu 100-krotnej 5-krotnej przestrzennej walidacji krzyżowej\\index{cross-validation!spatial CV}i losowego wyszukiwania 50 iteracji w sekcji @ref(svm).
+Napoziomie dostrajaniahiperparametrów\\index{hyperparameter}znaleźliśmy najlepszą kombinację hiperparametrów, która z kolei została wykorzystana na zewnętrznym poziomie wydajności do przewidywania danych testowych konkretnego podziału przestrzennego (patrz również rysunek @ref(fig:inner-outer)).Zrobiono
+to dla pięciu podziałów przestrzennych i powtórzono 100 razy, uzyskując łącznie 500 optymalnych kombinacji hiperparametrów.
+Którą z nich powinniśmy użyć do tworzenia map rozkładu przestrzennego?
+Odpowiedź jest prosta: żadnej.
+Należy pamiętać, że dostrajanie zostało przeprowadzone w celu uzyskania oszacowania wydajności o zmniejszonym odchyleniu, a nie w celu uzyskania najlepszej możliwej prognozy przestrzennej.
+W tym drugim przypadku szacuje się najlepsząkombinacjęhiperparametrów\\index{hyperparameter}na podstawie kompletnego zestawu danych.
+Oznacza to, że wewnętrznypoziom dostrajaniahiperparametrów\\index{hyperparameter}nie jest już potrzebny, co ma sens, ponieważ stosujemy nasz model do nowych danych (nieodwiedzonych obserwacji terenowych), dla których prawdziwe wyniki są niedostępne, a zatem testowanie jest w każdym przypadku niemożliwe.
+Dlatego dostrajamy hiperparametry\\index{hyperparameter}w celu uzyskania dobrej prognozy przestrzennej dla kompletnego zbioru danych za pomocą 5-krotnego przestrzennego CV\\index{cross-validation!spatial CV}z jednym powtórzeniem.
+
+Po skonstruowaniu zmiennych wejściowych (`rp`) jesteśmy gotowi do określeniabloków budulcowych**mlr3**\\index{mlr3 (package)}(zadanie, uczenie się i ponowne próbkowanie).
+Do określenia zadania przestrzennego ponownie używamy pakietu**mlr3spatiotempcv** [@schratz_mlr3spatiotempcv_2021, sekcja @ref(spatial-cv-with-mlr3)] , a ponieważ nasza odpowiedź (`sc`) jest liczbowa, używamyzadaniaregresji\\index{regression}.
+
+```{r 15-eco-20}
+# create task
+task = mlr3spatiotempcv::as_task_regr_st(
+  select(rp, -id, -spri),
+  target = "sc",
+  id = "mongon"
+)
+```
+
+Wykorzystanieobiektu`sf`jako zaplecza automatycznie dostarcza informacje geometryczne potrzebne do późniejszego podziału przestrzennego.
+Dodatkowo pozbyliśmy się kolumn`id`i`spri`, ponieważ zmienne te nie powinny być wykorzystywane jako predyktory w modelowaniu.
+Następnie przechodzimy do konstruowaniauczącego sięlasu losowego\\index{random forest}z pakietu**ranger** [@wright_ranger_2017] .
+
+```{r 15-eco-21}
+lrn_rf = lrn("regr.ranger", predict_type = "response")
+```
+
+W przeciwieństwie do np. maszyn wektorów nośnych\\index{SVM}(patrz sekcja @ref(svm)), lasy losowe często wykazują już dobrą wydajność,gdy są używane z domyślnymi wartościami hiperparametrów (co może być jednym z powodów ich popularności).
+ Niemniej jednak dostrajanie często umiarkowanie poprawia wyniki modelu, a zatem jest warte wysiłku [@probst_hyperparameters_2018] .
+W lasach losowych\\index{random forest}hiperparametry\\index{hyperparameter}`mtry`,`min.node.size`i`sample.fraction` określają stopień losowości i powinny być dostosowane [@probst_hyperparameters_2018] .
+`mtry`wskazuje, ile zmiennych predykcyjnych powinno być użytych w każdym drzewie.
+Jeśli używane są wszystkie predyktory, odpowiada to w rzeczywistości baggingowi (patrz początek sekcji @ref(modeling-the-floristic-gradient)).
+Parametr`sample.fraction`określa ułamek obserwacji, które mają być użyte w każdym drzewie.
+Mniejsze ułamki prowadzą do większej różnorodności, a tym samym do mniej skorelowanych drzew, co często jest pożądane (patrz wyżej).
+Parametr`min.node.size`wskazuje minimalną liczbę obserwacji, jaką powinien mieć węzeł końcowy (patrz również rysunek @ref(fig:tree)).
+Oczywiście, wraz ze wzrostem wielkości drzew i czasu obliczeniowego,`min.node.size`maleje.
+
+Kombinacjehiperparametrów\\indeksów{hyperparameter}będą wybierane losowo, ale powinny mieścić się w określonych granicach dostrajania (utworzonych za pomocą`paradox::ps()`).
+`mtry`powinien mieścić się w zakresie od 1 do liczby predyktorów (`r ncol(task$data()) - 1`),`sample.fraction`powinien mieścić się w zakresie od 0,2 do 0,9, a`min.node.size` powinien mieścić się w zakresie od 1 do 10 [@probst_hyperparameters_2018] .
+
+```{r 15-eco-22}
+# specifying the search space
+search_space = paradox::ps(
+  mtry = paradox::p_int(lower = 1, upper = ncol(task$data()) - 1),
+  sample.fraction = paradox::p_dbl(lower = 0.2, upper = 0.9),
+  min.node.size = paradox::p_int(lower = 1, upper = 10)
+)
+```
+
+Po zdefiniowaniu przestrzeni wyszukiwania jesteśmy gotowi do określenia naszego dostrojenia za pomocąfunkcji`AutoTuner()`.
+Ponieważ mamy do czynienia z danymi geograficznymi, ponownie wykorzystamy przestrzenną walidację krzyżową do dostrojenia hiperparametrów\\index{hyperparameter}(patrz sekcje @ref(intro-cv) i @ref(spatial-cv-with-mlr3)).
+W szczególności użyjemy 5-krotnego podziału przestrzennego z tylko jednym powtórzeniem (`rsmp()`).
+W każdym z tych podziałów przestrzennych uruchamiamy 50 modeli (`trm()`),wykorzystując losowo wybrane konfiguracje hiperparametrów (`tnr()`) w ramach z góry określonych limitów (`seach_space`),aby znaleźć optymalną kombinacjęhiperparametrów\\index{hyperparameter}, [zob. również sekcja @ref(svm) i https://mlr3book.mlr-org.com/chapters/chapter4/hyperparameter_optimization.html#sec-autotuner, @bischl_applied_2024] .
+Miara wydajności to średni błąd kwadratowy (RMSE\\index{RMSE}).
+
+```{r 15-eco-23}
+autotuner_rf = mlr3tuning::auto_tuner(
+  learner = lrn_rf,
+  resampling = mlr3::rsmp("spcv_coords", folds = 5), # spatial partitioning
+  measure = mlr3::msr("regr.rmse"), # performance measure
+  terminator = mlr3tuning::trm("evals", n_evals = 50), # specify 50 iterations
+  search_space = search_space, # predefined hyperparameter search space
+  tuner = mlr3tuning::tnr("random_search") # specify random search
+)
+```
+
+Wywołaniemetody`train()`obiektu`AutoTuner`powoduje uruchomieniedostrajaniahiperparametrów\\index{hyperparameter}i znalezienie optymalnej kombinacji hiperparametrów\\index{hyperparameter} dla określonych parametrów.
+
+```{r 15-eco-24, eval=FALSE, cache=TRUE, cache.lazy=FALSE}
+# hyperparameter tuning
+set.seed(19012026)
+autotuner_rf$train(task)
+```
+
+```{r 15-eco-25, cache=TRUE, cache.lazy=FALSE, eval=FALSE, echo=FALSE}
+saveRDS(autotuner_rf, "extdata/15-tune.rds")
+```
+
+```{r 15-eco-26, echo=FALSE, cache=TRUE, cache.lazy=FALSE}
+autotuner_rf = readRDS("extdata/15-tune.rds")
+```
+
+```{r tuning-result, cache=TRUE, cache.lazy=FALSE}
+autotuner_rf$tuning_result
+```
+
+### Mapowanie predykcyjne
+
+Dostrojone hiperparametry\\index{hyperparameter}mogą być teraz wykorzystane do prognozowania.
+W tym celu wystarczy uruchomićmetodę`predict`naszego dopasowanegoobiektu`AutoTuner`.
+
+
+
+```{r 15-eco-27, cache=TRUE, cache.lazy=FALSE, warning=FALSE}
+# predicting using the best hyperparameter combination
+autotuner_rf$predict(task)
+```
+
+Metoda`predict`zastosuje model do wszystkich obserwacji wykorzystanych w modelowaniu.
+Biorąc pod uwagę wielowarstwowy obiekt`SpatRaster`zawierający rastrowe pliki nazwane jako predyktory wykorzystane w modelowaniu,`terra::predict()`utworzy również mapy rozmieszczenia przestrzennego, tj. prognozy dla nowych danych.
+Alternatywnie można również użyć dedykowanegopakietu**mlr3spatial**do wykonywania prognoz przestrzennych.
+
+```{r 15-eco-28, cache=TRUE, cache.lazy=FALSE, eval=FALSE}
+pred = terra::predict(ep, model = autotuner_rf$learner$model$model, fun = predict)
+
+# doing the same using mlr3spatial
+# pred = mlr3spatial::predict_spatial(newdata = ep, learner = autotuner_rf)
+```
+
+```{r rf-pred, echo=FALSE, eval=TRUE, fig.cap="Predictive mapping of the floristic gradient clearly revealing distinct vegetation belts.", fig.scap="Predictive mapping of the floristic gradient."}
+# hs = terra::shade(terra::terrain(dem, v = "slope", unit = "radians"),
+#                   terra::terrain(dem, v = "aspect", unit = "radians"),
+#                   10, 200) |>
+#   terra::mask(terra::vect(study_area))
+# pred = terra::mask(pred, terra::vect(study_area)) |>
+#   terra::trim()
+#
+# # remotes::install_github("r-tmap/tmap")
+# library(tmap)
+# pal = rev(hcl.colors(n = 15, "RdYlBu"))
+# tm = tm_shape(hs) +
+#   tm_grid(n.x = 3, n.y = 3, lines = FALSE) +
+#   tm_raster(col.scale = tm_scale_continuous(values = rev(hcl.colors(99, "Grays"))),
+#             col.legend = tm_legend_hide()) +
+#   tm_shape(pred, is.main = TRUE) +
+#   tm_raster(col.scale = tm_scale_continuous(values = pal, midpoint = NA),
+#             col.legend = tm_legend(title = "NMDS1", reverse = TRUE),
+#             col_alpha = 0.8) +
+#   tm_shape(study_area) +
+#   tm_borders() +
+#   tm_layout(legend.position = tm_pos_auto_out())
+# tmap_save(tm, "images/15_rf_pred.png",
+#           width = 10, height = 8, units = "cm")
+
+knitr::include_graphics("images/15_rf_pred.png")
+```
+
+W przypadku,gdy`terra::predict()`nie obsługuje algorytmu modelowego, nadal można wykonać prognozy ręcznie.
+
+```{r 15-eco-29, cache=TRUE, cache.lazy=FALSE, eval=FALSE}
+newdata = as.data.frame(as.matrix(ep))
+colSums(is.na(newdata))  # 0 NAs
+# but assuming there were 0s results in a more generic approach
+ind = rowSums(is.na(newdata)) == 0
+tmp = autotuner_rf$predict_newdata(newdata = newdata[ind, ], task = task)
+newdata[ind, "pred"] = data.table::as.data.table(tmp)[["response"]]
+pred_2 = ep$dem
+# now fill the raster with the predicted values
+pred_2[] = newdata$pred
+# check if terra and our manual prediction is the same
+all(values(pred - pred_2) == 0)
+```
+
+Mapowanie prognostyczne wyraźnie ujawnia wyraźne pasy roślinności (rysunek @ref(fig:rf-pred)).
+Szczegółowy opis pasów roślinności nagórach*Lomas*można znaleźć w @muenchow\_soil\_2013.Niebieskie odcienie
+reprezentują tzw.pas*Tillandsia*.
+*Tillandsia*to wysoce przystosowany rodzaj roślin, występujący w dużych ilościach na piaszczystym i dość pustynnym podnóżugór*Lomas*.
+Żółte odcienie odnoszą się do pasa roślinności zielnej o znacznie większym pokryciu roślinnym w porównaniu zpasem*Tillandsia*.
+Kolory pomarańczowe oznaczają pas bromelii, który charakteryzuje się największym bogactwem gatunkowym i pokryciem roślinnością.Znajduje
+się on bezpośrednio poniżej inwersji temperatury (ok. 750-850 m n.p.m.), gdzie wilgotność spowodowana mgłą jest najwyższa.
+Dostępność wody naturalnie zmniejsza się powyżej inwersji temperatury, a krajobraz ponownie staje się pustynny, z nielicznymi gatunkami sukulentów (pas sukulentów; kolory czerwone).
+Co ciekawe, prognoza przestrzenna wyraźnie pokazuje, że pas bromeliowy jest przerwany, co jest bardzo interesującym odkryciem, którego nie wykrylibyśmy bez mapowania prognostycznego.
+
+## Wnioski
+
+W niniejszym rozdziale skoordynowaliśmy\\index{ordination}macierz społeczności*lomas*Mt. Mongon za pomocą NMDS\\index{NMDS}(sekcja @ref(nmds)).
+Pierwsza oś, reprezentująca główny gradient florystyczny na badanym obszarze, została zamodelowana jako funkcja predyktorów środowiskowych, które częściowo zostały uzyskane za pomocąmostówR-GIS\\index{GIS}(sekcja @ref(data-and-data-preparation)).
+Pakiet**mlr3**\\index{mlr3 (package)}dostarczył elementy składowe do przestrzennego dostrojenia hiperparametrów\\index{hyperparameter}`mtry`,`sample.fraction`i`min.node.size`(sekcja @ref(mlr3-building-blocks)).
+Dostrojone hiperparametry\\index{hyperparameter}posłużyły jako dane wejściowe do ostatecznego modelu, który z kolei został zastosowany do predyktorów środowiskowych w celu przestrzennej reprezentacji gradientu florystycznego (sekcja @ref(predictive-mapping)).
+Wynik pokazuje przestrzennie zdumiewającą różnorodność biologiczną w środku pustyni.
+Ponieważgóry*Lomas*są poważnie zagrożone, mapa prognoz może służyć jako podstawa do podejmowania świadomych decyzji dotyczących wyznaczania stref ochronnych oraz uświadamiania lokalnej ludności o wyjątkowości ich najbliższego otoczenia.
+
+Jeśli chodzi o metodologię, można by poruszyć kilka dodatkowych kwestii:
+
+- interesujące byłoby również modelowanie drugiejosiordynacji\\indeksu{ordination}, a następnie znalezienie innowacyjnego sposobu wspólnej wizualizacji modelowanych wyników obu osi na jednej mapie prognoz
+- . Jeśli chcielibyśmy zinterpretować model w sposób znaczący z ekologicznego punktu widzenia, powinniśmy prawdopodobnie zastosować modele (pół)parametryczne [@muenchow_predictive_2013;@zuur_mixed_2009;@zuur_beginners_2017] .
+  Istnieją jednak co najmniej podejścia, które pomagają interpretować modele uczenia maszynowego, takie jak lasy losowe\\index{random forest}(patrz np.<https://mlr-org.com/posts/2018-04-30-interpretable-machine-learning-iml-and-mlr/>).
+- Optymalizacja oparta na modelu sekwencyjnym (SMBO) może być lepsza niż losowe wyszukiwanie hiperparametrów\\index{hyperparameter} optymalizacja użyta w tym rozdziale [@probst_hyperparameters_2018]
+
+Na koniec warto zauważyć, że losowe lasy\\index{random forest}i innemodeleuczenia maszynowego\\index{machine learning}są często używane w sytuacjach, gdzie jest dużo więcej obserwacji i predyktorów niż w tym rozdziale i gdzie nie jest jasne, które zmienne i interakcje między zmiennymi pomagają wyjaśnić reakcję.
+Ponadto relacje te mogą być wysoce nieliniowe.
+W naszym przypadku relacja między odpowiedzią a predyktorami jest dość jasna, występuje tylko niewielka nieliniowość, a liczba obserwacji i predyktorów jest niewielka.
+Dlatego warto wypróbować model liniowy\\index{regression!linear}.
+Model liniowy jest znacznie łatwiejszy do wyjaśnienia i zrozumienia niżmodellasu losowego\\index{random forest}, dlatego jest preferowany (prawo oszczędności).
+Dodatkowo jest on mniej wymagający obliczeniowo (patrz Ćwiczenia).
+Jeśli model liniowy nie jest w stanie poradzić sobie ze stopniem nieliniowości występującym w danych, można również wypróbować uogólniony model addytywny\\index{generalized additive model}(GAM).
+Chodzi o to, że zestaw narzędzi analityka danych składa się z więcej niż jednego narzędzia i to użytkownik jest odpowiedzialny za wybór narzędzia najlepiej dostosowanego do danego zadania lub celu.
+W tym miejscu chcieliśmy zapoznać czytelnika zmodelowaniemlasu losowego\\index{random forest}oraz sposobem wykorzystania odpowiednich wyników do celów mapowania predykcyjnego.
+W tym celu odpowiedni jest dobrze zbadany zbiór danych o znanych zależnościach między odpowiedzią a predyktorami.Nie oznacza
+to jednak, żemodellasu losowego\\index{random forest}dał najlepszy wynik pod względem wydajności predykcyjnej.
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_15-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+
