@@ -1,5 +1,8 @@
 # note to self: try to translate single sentences with potential problems, not to lose the limits next time...
 
+### CUT THE FILE INTO PIECES -- FIND ISSUES MANUALLY!!!
+
+
 library(babeldown)
 library(purrr)
 
@@ -7,9 +10,13 @@ library(purrr)
 rmd_lines <- readLines("12-spatial-cv.Rmd")
 
 # Split into blocks of 50 lines (adjust as needed)
-block_size <- 50
+block_size <- 100
 # rmd_lines <- blocks[[6]]
 blocks <- split(rmd_lines, ceiling(seq_along(rmd_lines) / block_size))
+# 
+# blocks <- blocks[1]
+# block_size <- 40
+# blocks <- split(blocks[[1]], ceiling(seq_along(blocks[[1]]) / block_size))
 
 # Test each block separately
 imap(blocks, ~{

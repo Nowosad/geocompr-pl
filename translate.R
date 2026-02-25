@@ -17,7 +17,7 @@ deepl_translate("10-gis.Rmd", "10-gis-pl.Rmd", source_lang = "EN", target_lang =
 deepl_translate("12-spatial-cv.Rmd", "12-spatial-cv-pl.Rmd", source_lang = "EN", target_lang = "PL")
 # deepl_translate("13-transport.Rmd", "13-transport-pl.Rmd", source_lang = "EN", target_lang = "PL")
 # deepl_translate("14-location.Rmd", "14-location-pl.Rmd", source_lang = "EN", target_lang = "PL")
-deepl_translate("15-eco.Rmd", "15-eco-pl.Rmd", source_lang = "EN", target_lang = "PL")
+# deepl_translate("15-eco.Rmd", "15-eco-pl.Rmd", source_lang = "EN", target_lang = "PL")
 # deepl_translate("16-synthesis.Rmd", "16-synthesis-pl.Rmd", source_lang = "EN", target_lang = "PL")
 
 # Exercises
