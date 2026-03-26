@@ -1,0 +1,1117 @@
+# Mosty do oprogramowania GIS{#gis}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## Wymagania wstępne{-}
+
+- W tym rozdziale wymagana jestinstalacja programówQGIS\\index{QGIS}, SAGA\\index{SAGA}oraz GRASS GIS\\index{GRASS GIS}, a także dołączenie następujących pakietów:
+
+```{r 09-gis-1, message=FALSE, echo=FALSE}
+library(sf)
+library(terra)
+```
+
+```{r 09-gis-1-2, message=FALSE, eval=FALSE}
+library(sf)
+library(terra)
+library(qgisprocess)
+library(Rsagacmd)
+library(rgrass)
+library(rstac)
+library(gdalcubes)
+```
+
+```{r 09-gis-1-3, echo=FALSE, message=FALSE}
+# Only run code if qgis and relevant plugins are installed
+has_qgis_plugins = 
+  # make sure that qgisprocess is installed
+  "qgisprocess" %in% installed.packages() &&
+  # make sure that QGIS is available
+  qgisprocess::has_qgis() &&
+  # make sure that all required plugins are available
+   all(qgisprocess::qgis_has_plugin(c("grassprovider", 
+                                      "processing_saga_nextgen")))
+```
+
+## Wprowadzenie
+
+Cechą charakterystycznąjęzyków[interpretowanych](https://en.wikipedia.org/wiki/Interpreter_\(computing\))z interaktywną konsolą — technicznie rzecz biorąc pętlą typu „odczyt-ocena-wyświetlenie” (REPL) — takich jak R — jest sposób interakcji z nimi:
+zamiast polegać na wskazywaniu i klikaniu różnych części ekranu, wpisuje się polecenia do konsoli i wykonuje je za pomocąklawisza`Enter`.
+Typowym i skutecznym sposobem pracy przy użyciu interaktywnych środowisk programistycznych, takich jak RStudio lub VS Code, jest wpisywanie kodu do plików źródłowych w edytorze źródłowym i sterowanie interaktywnym wykonywaniem kodu za pomocą skrótu, takiego jak`Ctrl+Enter`.
+
+Interfejsy wiersza poleceń (CLI) nie są charakterystyczne wyłącznie dla języka R: większość wczesnych środowisk komputerowych opierała się na „powłoce” wiersza poleceń i dopiero po wynalezieniu i powszechnym przyjęciu myszy komputerowej w latach 90. XX wieku interfejsy graficzne (GUI)\\index{graphical user interface}stały się powszechne.
+ Na przykładGRASS GIS, najdłużej działające oprogramowanieGIS typu open source\\index{GIS} , opierało się na interfejsie CLI, zanim zyskało GUI [@landa_new_2008] .
+Większość popularnych projektów oprogramowania GIS jest oparta na GUI.Z
+programami QGIS\\index{QGIS}, SAGA\\index{SAGA}, GRASS GIS\\index{GRASS GIS}i gvSIG*można*współpracowaćz poziomu terminali systemowych i wbudowanych interfejsów CLI, ale ich konstrukcja zachęca większość użytkowników do interakcji poprzez „wskazywanie i klikanie”.
+Niepożądanym skutkiem tego jest to, że większość użytkowników GIS traci korzyści płynące z podejścia opartego na interfejsie CLI i możliwości tworzenia skryptów.
+ Według twórcy popularnego oprogramowania QGIS [@sherman_desktop_2008]:
+
+> Wraz z pojawieniem się „nowoczesnego” oprogramowania GIS większość ludzi woli po prostu klikać myszką. To dobrze, ale wiersz poleceń oferuje ogromną elastyczność i możliwości. Często w wierszu poleceń można wykonać zadanie w ułamku czasu, jaki zajmuje to w interfejsie graficznym.
+
+Debata „CLI kontra GUI” nie musi mieć charakteru antagonistycznego: oba sposoby pracy mają swoje zalety, w zależności od szeregu czynników, w tym zadania (rysowanie nowych obiektów dobrze nadaje się do GUI), pożądanego poziomu powtarzalności oraz umiejętności użytkownika.
+GRASS GIS jest dobrym przykładem oprogramowania GIS, które opiera się głównie na CLI, ale posiada również rozbudowany GUI.
+Podobnie, podczas gdy R koncentruje się na CLI, środowiska IDE, takie jak RStudio, zapewniają GUI w celu poprawy dostępności.
+Oprogramowania nie da się jednoznacznie podzielić na oparte na CLI lub GUI.
+Jednak interaktywne interfejsy wiersza poleceń mają kilka istotnych zalet w zakresie:
+
+- automatyzacji powtarzalnych zadań
+
+,
+
+- zapewnienia przejrzystości i odtwarzalności
+
+,
+
+- wspierania rozwoju oprogramowania poprzez udostępnianie narzędzi do modyfikacji istniejących funkcji i wdrażania nowych,
+- rozwijania przyszłościowych i wydajnych umiejętności programistycznych
+- ,
+- na które istnieje duże zapotrzebowanie
+- , oraz doskonalenia pisania bezwzrokowego, kluczowej umiejętności w erze cyfrowej
+
+.
+
+Z drugiej strony, dobre GUI\\index{graphical user interface}również mają zalety, w tym:
+
+- „Płaską” krzywą uczenia się, co oznacza, że dane geograficzne można przeglądać i wizualizować bez konieczności poświęcania wielu godzin na naukę nowego języka
+- ; Obsługę „digitalizacji” (tworzenia nowych zbiorów danych wektorowych), w tym narzędzi do śledzenia, przyciągania i narzędzi topologicznych^\[Pakiet R**mapedit**umożliwia szybką edycję kilku obiektów przestrzennych w oknie przeglądarki otwartym z poziomu R, ale nie pozwala na profesjonalną digitalizację kartograficzną na dużą skalę.\]
+- Umożliwia georeferencjonowanie (dopasowywanie obrazów rastrowych do istniejących map) za pomocą punktów kontrolnych na ziemi i ortorektyfikacji
+- . Obsługuje mapowanie stereoskopowe (np. LiDAR i struktura z ruchu).
+
+Kolejną zaletą dedykowanych projektów oprogramowania GIS jest to, że zapewniają one dostęp do setek „geoalgorytmów” poprzez „mosty GIS” [@neteler_open_2008] .
+Tematyka niniejszego rozdziału dotyczy właśnie takich mostów do tych recept obliczeniowych, które zwiększają możliwości języka R w zakresie rozwiązywania problemów związanych z danymi geograficznymi.
+
+```{block2 09-gis-2, type="rmdnote"}
+A command line interface is an environment for interacting with computer programs by typing and entering successive commands (command lines).
+`bash` in Linux and `PowerShell` in Windows are well-known examples that allow the user to control almost any part of their operating system.
+IDEs such as RStudio and VS Code provide code auto-completion and other features to improve the user experience when developing code.
+```
+
+Język R jest naturalnym wyborem dla osób pragnących zbudować mosty między powtarzalnymi procesami analizy danych a systemami GIS, ponieważ*powstał*jako język interfejsowy.
+Kluczową cechą języka R (i jego poprzednika S) jest to, że zapewnia on dostęp do algorytmów statystycznych w innych językach (szczególnie FORTRAN\\index{FORTRAN} i C), ale z poziomu potężnego języka funkcjonalnego wysokiego poziomu z intuicyjnym środowiskiem REPL, którego brakowało w C i FORTRAN [@chambers_extending_2016] .
+R kontynuuje tę tradycję dzięki interfejsom do wielu języków, w szczególności C++\\index{C++}.
+
+Chociaż R nie został zaprojektowany jako GIS z wierszem poleceń, jego zdolność do łączenia się z dedykowanymi systemami GIS zapewnia mu zadziwiające możliwości geoprzestrzenne.
+Dzięki mostom GIS R może odtwarzać bardziej zróżnicowane procesy, z dodatkowymi korzyściami w zakresie powtarzalności, skalowalności i wydajności wynikającymi z kontrolowania ich ze środowiska programistycznego i spójnego CLI.
+Ponadto R przewyższa systemy GIS w niektórych obszarach geokomputacji\\index{geocomputation}, w tymwtworzeniu interaktywnych/animowanych map (patrz rozdział @ref(adv-map)) oraz modelowaniu statystycznym przestrzennym (patrz rozdział @ref(spatial-cv)).
+
+Niniejszy rozdział skupia się na „mostach” do trzech dojrzałych produktów GIS typu open source, podsumowanych w tabeli @ref(tab:gis-comp):
+
+- QGIS\\index{QGIS}, za pomocą pakietu**qgisprocess**\\index{qgisprocess (package)} [@R-qgisprocess; Sekcja @ref(rqgis)]
+- SAGA\\index{SAGA}, za pomocą**Rsagacmd**\\index{Rsagacmd (package)} [@R-Rsagacmd; Sekcja @ref(saga)]
+- GRASS GIS\\index{GRASS GIS}, poprzez**rgrass**\\index{rgrass (package)} [@R-rgrass; Sekcja @ref(grass)]
+
+Nastąpił również znaczny postęp w zakresie umożliwienia oprogramowaniu GIS typu open source pisania i wykonywania skryptów R wewnątrz QGIS\\index{QGIS}(patrz[docs.qgis.org](https://docs.qgis.org/3.28/en/docs/training_manual/processing/r_intro.html)) oraz GRASS GIS (patrz[grasswiki.osgeo.org](https://grasswiki.osgeo.org/wiki/R_statistics/rgrass#R_within_GRASS)).
+
+```{r gis-comp, echo=FALSE, message=FALSE}
+library(dplyr)
+d = tibble(
+  "GIS" = c("QGIS", "SAGA", "GRASS GIS"),
+  "First Release" = c("2002", "2004", "1982"),
+  "No. Functions" = c(">1000", ">600", ">500"),
+  "Support" = c("hybrid", "hybrid", "hybrid")
+)
+knitr::kable(
+  x = d,
+  caption = paste(
+    "Comparison between three open-source GIS.",
+    "Hybrid refers to the support of vector and",
+    "raster operations."
+  ),
+  caption.short = "Comparison between three open-source GIS.",
+  booktabs = TRUE
+) #|>
+# kableExtra::add_footnote(label = "Comparing downloads of different providers is rather difficult (see http://spatialgalaxy.net/2011/12/19/qgis-users-around-the-world), and here also useless since every Windows QGIS download automatically also downloads SAGA and GRASS GIS.", notation = "alphabet")
+```
+
+Oprócz trzech wspomnianych powyżej mostów R-GIS, niniejszy rozdział zawiera również krótkie wprowadzenie do interfejsów R do bibliotek przestrzennych (sekcja @ref(gdal)), przestrzennych baz danych\\index{spatial database}(sekcja @ref(postgis)) oraz przetwarzania danych obserwacji Ziemi w chmurze (sekcja @ref(cloud)).
+
+## **qgisprocess**: most do QGIS i nie tylko{#rqgis}
+
+QGIS\\index{QGIS}jest najpopularniejszym systemem GIS typu open source (Tabela @ref(tab:gis-comp); @graser\_processing\_2015).
+QGIS zapewnia ujednolicony interfejs do natywnych algorytmów geograficznych QGIS, GDAL oraz — o ile są zainstalowane — od innych*dostawców*,takich jak GRASS GIS\\index{GRASS GIS}i SAGA\\index{SAGA} [@graser_processing_2015] .
+Od wersji 3.14 (wydanej latem 2020 r.) QGIS zawieranarzędzie wiersza poleceń`qgis_process`,umożliwiające dostęp do bogatego zestawu funkcji geoinformacyjnych.
+`qgis_process`zapewnia dostęp do ponad 300 algorytmów geograficznych w standardowej instalacji QGIS oraz do ponad 1000 poprzez wtyczki do zewnętrznych dostawców, takich jak GRASS GIS i SAGA.
+
+Pakiet**qgisprocess**\\index{qgisprocess (package)}zapewnia dostęp do`qgis_process`z poziomu języka R.
+Pakiet wymaga, aby QGIS — oraz wszelkie inne odpowiednie wtyczki, takie jak GRASS GIS i SAGA, używane w tym rozdziale — były zainstalowane i dostępne w systemie.Instrukcje instalacji
+można znaleźć w[dokumentacji](https://r-spatial.github.io/qgisprocess/)**qgisprocess**.
+
+```{block2 qgisdocker, type="rmdnote"}
+A quick way to get up-and-running with **qgisprocess** if you have Docker installed is via the `qgis` image developed as part of this project.
+Assuming you have Docker installed and sufficient computational resources, you can run an R session with **qgisprocess** and relevant plugins with the following command (see the [geocompx/docker](https://github.com/geocompx/docker) repository for details):
+
+`docker run -e DISABLE_AUTH=true -p 8786:8787 ghcr.io/geocompx/docker:qgis`
+
+```
+
+```{r, eval=FALSE}
+library(qgisprocess)
+#> Attempting to load the cache ... Success!
+#> QGIS version: 3.30.3-'s-Hertogenbosch
+#> ...
+```
+
+Pakiet ten automatycznie próbuje wykryć instalację QGIS i zgłasza błąd
+
+,
+
+jeśli nie może jej znaleźć.^\[Szczegóły procesu wykrywania można sprawdzić za pomocą polecenia`qgis_configure()`.\]
+Istnieje kilka możliwych rozwiązań w przypadku niepowodzenia konfiguracji: można ustawić`options(qgisprocess.path = "path/to/your_qgis_process")`lub skonfigurowaćzmienną środowiskową`R_QGISPROCESS_PATH`.Powyższe
+podejścia można również zastosować,gdy masz więcej niż jedną instalację QGIS i chcesz zdecydować, której z nich użyć.
+Aby uzyskać więcej szczegółów, zapoznaj się z[sekcją „Pierwsze kroki”](https://r-spatial.github.io/qgisprocess/articles/qgisprocess.html)w opisie**qgisprocess**.
+Następnie możemy sprawdzić, które wtyczki (czyli różne programy) są dostępne na naszym komputerze:
+
+```{r plugins, eval=FALSE}
+qgis_plugins()
+#> # A tibble: 4 × 2
+#>   name                    enabled
+#>   <chr>                   <lgl>
+#> 1 grassprovider           FALSE
+#> 2 otbprovider             FALSE
+#> 3 processing              TRUE
+#> 4 processing_saga_nextgen FALSE
+```
+
+Oznacza to, żewtyczkiGRASS GIS (`grassprovider`) i SAGA (`processing_saga_nextgen`) są dostępne w systemie, ale nie zostały jeszcze włączone.
+Ponieważ będziemy potrzebować obu w dalszej części rozdziału, włączmy je.
+
+```{r enable-providers, eval=FALSE}
+qgis_enable_plugins(c("grassprovider", "processing_saga_nextgen"), 
+                    quiet = TRUE)
+```
+
+Należy pamiętać, że oprócz zainstalowania SAGA w systemie, należy również zainstalować wtyczkę QGIS Python o nazwie Processing Saga NextGen.
+Można to zrobić z poziomu QGIS za pomocą[Menedżera](https://docs.qgis.org/latest/en/docs/training_manual/qgis_plugins/fetching_plugins.html)[wtyczek](https://docs.qgis.org/latest/en/docs/training_manual/qgis_plugins/fetching_plugins.html)lub programowo przy pomocy pakietu Python[qgis-plugin-manager](https://github.com/3liz/qgis-plugin-manager)(przynajmniej w systemie Linux).
+
+`qgis_providers()`zawiera listę nazw oprogramowania oraz odpowiadającą im liczbę dostępnych geoalgorytmów.
+
+```{r providers, eval=FALSE}
+qgis_providers()
+#> # A tibble: 7 × 3
+#>   provider provider_title    algorithm_count
+#>   <chr>    <chr>                       <int>
+#> 1 gdal     GDAL                           56
+#> 2 grass    GRASS                         306
+#> 3 qgis     QGIS                           50
+#> 4 3d       QGIS (3D)                       1
+#> 5 native   QGIS (native c++)             243
+#> 6 pdal     QGIS (PDAL)                    17
+#> 7 sagang   SAGA Next Gen                 509
+```
+
+Tabela wyników potwierdza, że możemy korzystać z algorytmów geograficznych QGIS (`native`,`qgis`,`3d`,`pdal`) oraz algorytmów zewnętrznych od dostawców zewnętrznych
+
+,
+
+takich jak GDAL, SAGA i GRASS GIS
+
+,
+
+za pośrednictwem interfejsu QGIS.
+
+Teraz jesteśmy gotowi do obliczeń geograficznych z wykorzystaniem QGIS i innych narzędzi, bezpośrednio z poziomu R!
+Wypróbujmy dwa przykładowe studia przypadków.
+Pierwszy z nich pokazuje, jak połączyć dwa zbiory danych wielokątnych o różnych granicach\\index{union}(sekcja @ref(qgis-vector)).
+Drugi skupia się na uzyskaniu nowych informacji z cyfrowego modelu terenu przedstawionego jako raster (sekcja @ref(qgis-raster)).
+
+### Dane wektorowe{#qgis-vector}
+
+Rozważmy sytuację, w której mamy dwa obiekty wielokątne o różnych jednostkach przestrzennych (np. regiony, jednostki administracyjne).
+Naszym celem jest połączenie tych dwóch obiektów w jeden, zawierający wszystkie linie graniczne i powiązane atrybuty.
+Ponownie wykorzystujemy niezgodne wielokąty\\index{spatial congruence}, z którymi mieliśmy już do czynienia w sekcji @ref(incongruent) (rysunek @ref(fig:uniondata)).
+Oba zbiory danych wielokątów są dostępne wpakiecie**spData**i dla obu chcielibyśmy użyć geograficznego układu odniesienia\\index{CRS!geographic}(zobacz również rozdział @ref(reproj-geo-data)).
+
+```{r 09-gis-4}
+data("incongruent", "aggregating_zones", package = "spData")
+incongr_wgs = st_transform(incongruent, "EPSG:4326")
+aggzone_wgs = st_transform(aggregating_zones, "EPSG:4326")
+```
+
+```{r uniondata, echo=FALSE, fig.cap="Two areal units: incongruent (black lines) and aggregating zones (red borders).", fig.width=8}
+#| message: FALSE
+#| results: hide
+library(tmap)
+tm_shape(incongr_wgs) +
+  tm_polygons(col = "gray5") +
+  tm_shape(aggzone_wgs) +
+  tm_borders(col_alpha = 0.5, col = "red") +
+  tm_add_legend(type = "lines", labels = c("incongr_wgs", "aggzone_wgs"),
+                col = c("gray5", "red"), lwd = 3, position = tm_pos_in("right", "top")) +
+  tm_scalebar(position = c("left", "bottom"), breaks = c(0, 0.5, 1)) +
+  tm_layout(frame = FALSE, legend.text.size = 1,
+            inner.margins = c(0.02, 0.02, 0.03, 0.02))
+```
+
+Pierwszym krokiem jest znalezienie algorytmu, który umożliwia połączenie dwóch obiektów wektorowych.
+Aby wyświetlić listę wszystkich dostępnych algorytmów, możemy skorzystać zfunkcji\``qgis_algorithms()`\`.
+ Funkcja ta zwraca ramkę danych zawierającą wszystkich dostępnych dostawców oraz algorytmy, które oferują.^ [Jeśli więc nie widzisz oczekiwanego dostawcy, prawdopodobnie oznacza to, że musisz jeszcze zainstalować jakieś zewnętrzne oprogramowanie GIS.]
+
+```{r, eval=FALSE}
+# output not shown
+qgis_algorithms()
+```
+
+Aby znaleźć algorytm, możemy użyćfunkcji`qgis_search_algorithms()`.
+Zakładając, że krótki opis funkcji zawiera słowo „union”\\index{union}, możemy uruchomić następujący kod, aby znaleźć interesujący nas algorytm:
+
+```{r, eval=FALSE}
+qgis_search_algorithms("union")
+#> # A tibble: 2 × 5
+#>   provider provider_title    group          algorithm         algorithm_title 
+#>   <chr>    <chr>             <chr>          <chr>             <chr>           
+#> 1 native   QGIS (native c++) Vector overlay native:multiunion Union (multiple)
+#> 2 native   QGIS (native c++) Vector overlay native:union      Union  
+```
+
+Jeden z algorytmów z powyższej listy,`"native:union"`, wygląda obiecująco.
+Następnym krokiem jest sprawdzenie, co robi ten algorytm i jak możemy go użyć.
+Tą rolę pełni`qgis_show_help()`, która zwraca krótkie podsumowanie działania algorytmu, jego argumentów i wyników.^\[Niektóre informacje możemy również wyodrębnić samodzielnie za pomocą`qgis_get_description()`,`qgis_get_argument_specs()`oraz`qgis_get_output_specss()`.\]
+Powoduje to, że wynik jest dość długi.
+Poniższe polecenie zwraca ramkę danych, w której każdy wiersz reprezentuje argument wymagany przez`"native:union"`, a kolumny zawierają nazwę, opis, typ, wartość domyślną, dostępne wartości oraz dopuszczalne wartości związane z każdym z
+
+
+
+nich:
+
+```{r 09-gis-6, eval=FALSE, linewidth=80}
+alg = "native:union"
+union_arguments = qgis_get_argument_specs(alg)
+union_arguments
+#> # A tibble: 5 × 6
+#>   name    description qgis_type default_value available_values acceptable_...
+#>   <chr>   <chr>       <chr>     <list>        <list>           <list>           
+#> 1 INPUT   Input layer source    <NULL>        <NULL>           <chr [1]>        
+#> 2 OVERLAY Overlay la… source    <NULL>        <NULL>           <chr [1]>        
+#> 3 OVERLA… Overlay fi… string    <NULL>        <NULL>           <chr [3]>        
+#> 4 OUTPUT  Union       sink      <NULL>        <NULL>           <chr [1]>        
+#> 5 GRID_S… Grid size   number    <NULL>        <NULL>           <chr [3]>  
+
+#> [[1]]
+#> [1] "A numeric value"                                                                                 
+#> [2] "field:FIELD_NAME to use a data defined value taken from the FIELD_NAME
+#>      field"                    
+#> [3] "expression:SOME EXPRESSION to use a data defined value calculated using
+#>      a custom QGIS expression"
+```
+
+Argumenty zawarte w`union_arguments$name`to`INPUT`,`OVERLAY`,`OVERLAY_FIELDS_PREFIX`oraz`OUTPUT`.
+`union_arguments$acceptable_values`zawiera listę możliwych wartości wejściowych dla każdego argumentu.
+Wiele funkcji wymaga danych wejściowych reprezentujących ścieżki do warstwy wektorowej;funkcje**qgisprocess**akceptująobiektytypu`sf`jako takie argumenty.
+Obiekty zpakietów**terra**i**stars**mogą być używane, gdy wymagana jest „ścieżka do warstwy rastrowej”.
+Może to być bardzo wygodne, ale zalecamy podanie ścieżki do danych przestrzennych na dysku, gdy tylko je wczytujesz, aby przekazać je doalgorytmu**qgisprocess**: pierwszą rzeczą, jakąrobi**qgisprocess**podczas wykonywania geoalgorytmu, jest wyeksportowanie danych przestrzennych znajdujących się w sesji R z powrotem na dysk w formacie znanym QGIS, takim jak pliki .gpkg lub .tif.Może
+to wydłużyć czas działania algorytmu.
+
+Główną funkcją**qgisprocess**jest`qgis_run_algorithm()`, która wysyła dane wejściowe do QGIS i zwraca dane wyjściowe.
+Przyjmuje nazwę algorytmu oraz zestaw nazwanych argumentów pokazanych na liście pomocy i wykonuje oczekiwane obliczenia.
+W naszym przypadku ważne wydają się trzy argumenty:`INPUT`,`OVERLAY`oraz`OUTPUT`.
+Pierwszy z nich,`INPUT`, to nasz główny obiekt wektorowy`incongr_wgs`, natomiast drugi,`OVERLAY`, to`aggzone_wgs`.
+Ostatni argument,`OUTPUT`, to nazwa pliku wyjściowego, którą**qgisprocess**automatycznie wybierze i utworzy w`tempdir()`,jeśli nie zostanie podana żadna.
+
+```{r 09-gis-7, eval=FALSE}
+union = qgis_run_algorithm(alg,
+  INPUT = incongr_wgs, OVERLAY = aggzone_wgs
+)
+union
+#>  $ OUTPUT: 'qgis_outputVector' chr "/tmp/...gpkg"
+```
+
+Uruchomienie powyższego wiersza kodu spowoduje zapisanie naszych dwóch obiektów wejściowych w tymczasowych plikach .gpkg, zastosowanie na nich wybranego algorytmu oraz zwrócenie tymczasowego pliku .gpkg jako wyniku.
+Pakiet**qgisprocess**zapisujewynikfunkcji`qgis_run_algorithm()`jako listę zawierającą, w tym przypadku, ścieżkę do pliku wyjściowego.
+Możemy odczytać ten plik z powrotem do R za pomocą`read_sf()`(np.`union_sf = read_sf(union[[1]])`) lub bezpośrednio za pomocą`st_as_sf()`:
+
+```{r, eval=FALSE}
+union_sf = st_as_sf(union)
+```
+
+Należy zauważyć, żeoperacjaQGIS\\index{QGIS}union\\index{vector!union}łączy dwie warstwy wejściowe w jedną warstwę, wykorzystując przecięcie\\index{vector!intersection}oraz różnicę symetryczną tych dwóch warstw (co, nawiasem mówiąc, jest również ustawieniem domyślnym podczas wykonywania operacji połączenia w GRASS GIS\\index{GRASS GIS}oraz SAGA\\index{SAGA}).
+**Nie**jest toto samo
+
+,
+
+co`st_union(incongr_wgs, aggzone_wgs)`(zobacz Ćwiczenia)!
+
+Wynikiemjest`union_sf`,czyliwielokąt zawierający większą liczbę elementów niż dwa obiekty wejściowe.
+Należy jednak zauważyć, że wiele z tych wielokątów jest małych i nie reprezentuje rzeczywistych obszarów, a raczej wynika z różnego poziomu szczegółowości naszych dwóch zbiorów danych.
+Te artefakty błędów nazywane są wielokątami typu sliver\\index{sliver polygons}(patrz wielokąty w kolorze czerwonym w lewym panelu rysunku @ref(fig:sliver)).
+Jednym ze sposobów identyfikacji sliverów jest znalezienie wielokątów o stosunkowo bardzo małych powierzchniach, w tym przypadku np. 25000 m^2^, a następnie ich usunięcie.
+Poszukajmy odpowiedniego algorytmu.
+
+```{r, eval=FALSE}
+qgis_search_algorithms("clean")
+#> # A tibble: 1 × 5
+#>   provider provider_title group        algorithm      algorithm_title
+#>   <chr>    <chr>          <chr>        <chr>          <chr>
+#> 1 grass   GRASS           Vector (v.*) grass:v.clean v.clean
+```
+
+Tym razem znaleziony algorytm,`v.clean`, nie jest zawarty w QGIS, ale w GRASS GIS\\index{GRASS GIS}.
+Funkcja`v.clean`w GRASS GISjest potężnym narzędziem do czyszczenia topologii przestrzennych danych wektorowych\\index{topology cleaning}.
+Co ważne, możemy z niej korzystać poprzez**qgisprocess**.
+
+```{block2 grass7, type="rmdnote"}
+The GRASS GIS provider in QGIS was called `grass7` until QGIS version 3.34.
+Thus, if you have an older QGIS version, you must prefix the algorithms with `grass7` instead of `grass`.
+```
+
+Podobnie jak w poprzednim kroku, powinniśmy zacząć od zapoznania się z pomocą tego algorytmu.
+
+```{r, eval=FALSE}
+qgis_show_help("grass:v.clean")
+```
+
+Pominęliśmy tutaj wynik, ponieważ tekst pomocy jest dość długi i zawiera wiele argumentów.^ [Należy również zauważyć, że argumenty te, w przeciwieństwie do argumentów w QGIS, są zapisane małymi literami.]Wynika
+to z faktu, że`v.clean`jest narzędziem wielofunkcyjnym – może ono oczyszczać różne typy geometrii i rozwiązywać różnego rodzaju problemy topologiczne.
+W tym przykładzie skupimy się jednak tylko na kilku argumentach, zachęcamy jednak do zapoznania się z[dokumentacją](https://grass.osgeo.org/grass-stable/manuals/v.clean.html)tego[algorytmu](https://grass.osgeo.org/grass-stable/manuals/v.clean.html),aby dowiedzieć się więcej omożliwościach`v.clean`.
+
+```{r, eval=FALSE}
+qgis_get_argument_specs("grass:v.clean") |>
+  select(name, description) |>
+  slice_head(n = 4)
+#> # A tibble: 4 × 2
+#>   name      description
+#>   <chr>     <chr>
+#> 1 input     Layer to clean
+#> 2 type      Input feature type
+#> 3 tool      Cleaning tool
+#> 4 threshold Threshold (comma separated for each tool)
+```
+
+Głównym argumentem dla tego algorytmu jest`input`— nasz obiekt wektorowy.
+ Następnie musimy wybrać narzędzie — metodę czyszczenia.^ [Możliwe jest również wybranie kilku narzędzi, które zostaną następnie wykonane sekwencyjnie.]
+W`v.clean`dostępnych jest kilkanaście narzędzi, które pozwalają między innymi usuwać zduplikowane geometrie, usuwać małe kąty między liniami lub usuwać małe obszary.
+W tym przypadku interesuje nas to ostatnie narzędzie,`rmarea`.
+Kilka narzędzi,w tym`rmarea`, oczekuje dodatkowego argumentu`threshold`, którego zachowanie zależy od wybranego narzędzia.
+W naszym przypadkunarzędzie`rmarea`usuwa wszystkie obszary mniejsze lub równe podanej wartości`threshold`.
+Należy pamiętać, że próg musi być określony w metrach kwadratowych,niezależnie od układu odniesienia współrzędnych warstwy wejściowej.
+
+Uruchommy ten algorytm i przekształćmy jego wynik w nowyobiekt`sf``clean_sf`.
+
+```{r 09-gis-7c, eval=FALSE, message=FALSE}
+clean = qgis_run_algorithm("grass:v.clean",
+  input = union_sf, 
+  tool = "rmarea", threshold = 25000
+)
+clean_sf = st_as_sf(clean)
+```
+
+Wynik, widoczny na prawym panelu rysunku @ref(fig:sliver), wygląda zgodnie z oczekiwaniami — wąskie wielokąty zostały usunięte.
+
+```{r sliver, echo=FALSE, fig.cap="Sliver polygons colored in red (left panel). Cleaned polygons (right panel)."}
+knitr::include_graphics("images/10-sliver.png")
+```
+
+### Dane rastrowe{#qgis-raster}
+
+Cyfrowe modele wysokościowe (DEM)\\index{digital elevation model}zawierają informacje o wysokości dla każdej komórki rastra.
+Wykorzystuje się je do wielu celów, w tym do nawigacji satelitarnej, modeli przepływu wody, analizy powierzchni lub wizualizacji.
+W tym przypadku interesuje nas uzyskanie nowych informacji z rastra DEM, które mogłyby posłużyć jako predyktory w uczeniu statystycznym.
+Różne parametry terenu mogą być pomocne, na przykład w prognozowaniu osuwisk (patrz rozdział @ref(spatial-cv)).
+
+W tej sekcji wykorzystamyplik`dem.tif`— cyfrowy model wysokościowy obszaru badań Mongón (pobrany z Land Process Distributed Active Archive Center, zob. również`?dem.tif`).Ma
+on rozdzielczość około 30 x 30 metrów i wykorzystuje rzutowany układ odniesienia (CRS).
+
+```{r, eval=FALSE, message=FALSE}
+library(qgisprocess)
+library(terra)
+dem = system.file("raster/dem.tif", package = "spDataLarge")
+```
+
+Polecenie\``terrain()`\`zpakietu**\`terra**\`umożliwia już obliczenie kilku podstawowych cech topograficznych, takich jak nachylenie, ekspozycja, TPI (*wskaźnik położenia topograficznego*), TRI (*wskaźnik nierówności terenu*), chropowatość oraz kierunki przepływu.Programy GIS
+oferują jednak znacznie więcej cech terenu, z których niektóre mogą być bardziej odpowiednie w określonych kontekstach.
+Na przykład wskaźnik wilgotności topograficznej (TWI)\\index{topographic wetness index} okazał się przydatny w badaniu procesów hydrologicznych i biologicznych [@sorensen_calculation_2006] .
+Poszukajmy tego wskaźnika na liście algorytmów,używającsłowa kluczowego „`"wetness"`”.
+
+```{r, eval=FALSE}
+qgis_search_algorithms("wetness") |>
+  dplyr::select(provider_title, algorithm) |>
+  head(2)
+#> # A tibble: 2 × 2
+#>   provider_title algorithm
+#>   <chr>          <chr>
+#> 1 SAGA Next Gen  sagang:sagawetnessindex
+#> 2 SAGA Next Gen  sagang:topographicwetnessindexonestep
+```
+
+Wynik powyższego kodu sugeruje, że pożądany algorytm istnieje w oprogramowaniu SAGA\\index{SAGA}.^\[Wskaźnik TWI można również obliczyć za pomocąfunkcji GRASS GIS`r.topidx`.\]
+Chociaż SAGA jest hybrydowym systemem GIS, jej głównym celem jest przetwarzanie rastrów, a w tym przypadku w szczególności cyfrowych modeli wysokościowych\\index{digital elevation model}(właściwości gleby, atrybuty terenu, parametry klimatyczne).
+Dlatego SAGA szczególnie dobrze radzi sobie z szybkim przetwarzaniem dużych (wysokiej rozdzielczości) zbiorów danychrastrowych\\index{raster} [@conrad_system_2015] .
+
+Algorytm`"sagang:sagawetnessindex"` jest w rzeczywistości zmodyfikowanym algorytmem TWI, który zapewnia bardziej realistyczny potencjał wilgotności gleby dla komórek położonych na dnie dolin [@bohner_spatial_2006] .
+
+```{r, eval=FALSE}
+qgis_show_help("sagang:sagawetnessindex")
+```
+
+W tym przypadku stosujemy wartości domyślne dla wszystkich argumentów.
+W związku z tym musimy określić tylko jeden argument — plik wejściowy`DEM`.
+Oczywiście podczas stosowania tego algorytmu należy upewnić się, że wartości parametrów są zgodne z celem badania.^\[Dodatkowe argumenty`"sagang:sagawetnessindex"`są dobrze wyjaśnione na stronie https://gis.stackexchange.com/a/323454/20955.\]
+
+Przed uruchomieniem algorytmu SAGA w QGIS zmieniamy domyślny format wyjściowy rastra z`.tif`na natywny format rastra SAGA`.sdat`.
+W związku z tym wszystkie rastrowe pliki wyjściowe, których nie określimy samodzielnie, będą od tej pory zapisywane wformacie`.sdat`.
+W zależności od używanych wersji oprogramowania (SAGA, GDAL) może to nie być konieczne, ale często pozwoli to uniknąć problemów podczas próby wczytania rastrów wyjściowych utworzonych za pomocą SAGA.
+
+```{r, eval=FALSE}
+options(qgisprocess.tmp_raster_ext = ".sdat")
+dem_wetness = qgis_run_algorithm("sagang:sagawetnessindex",
+  DEM = dem
+)
+```
+
+`"sagang:sagawetnessindex"`zwraca nie jeden, ale cztery rastrów — obszar zlewni, nachylenie zlewni, zmodyfikowany obszar zlewni oraz topograficzny wskaźnik wilgotności.
+Możemy odczytać wybrany plik wyjściowy, podając nazwę pliku wfunkcji`qgis_as_terra()`.
+A ponieważ zakończyliśmy przetwarzanie w programie SAGA w ramach QGIS, zmieniamy format wyjściowy rastra z powrotem na`.tif`.
+
+```{r, eval=FALSE}
+dem_wetness_twi = qgis_as_terra(dem_wetness$TWI)
+# plot(dem_wetness_twi)
+options(qgisprocess.tmp_raster_ext = ".tif")
+```
+
+Mapę TWI można zobaczyć w lewym panelu rysunku @ref(fig:qgis-raster-map).
+Wskaźnik wilgotności topograficznej jest bezwymiarowy: jego niskie wartości odpowiadają obszarom, na których woda się nie gromadzi, natomiast wyższe wartości wskazują obszary, na których woda gromadzi się w coraz większym stopniu.
+
+Informacje z cyfrowych modeli wysokościowych można również kategoryzować, na przykład według geomorfonów\\index{geomorphons} — fenotypów geomorfologicznych składających się z dziesięciu klas reprezentujących formy terenu, takie jak zbocza, grzbiety lub doliny [@jasiewicz_geomorphons_2013] .
+Fenotypy te są wykorzystywane w wielu badaniach, w tym dotyczących podatności na osuwiska, usług ekosystemowych, mobilności ludzi oraz cyfrowego mapowania gleb.
+
+Pierwotna implementacja algorytmu geomorfonów została stworzona w GRASS GIS i można ją znaleźć naliście**qgisprocess**jako`"grass:r.geomorphon"`:
+
+```{r, eval=FALSE}
+qgis_search_algorithms("geomorphon")
+#> [1] "grass:r.geomorphon" "sagang:geomorphons" 
+qgis_show_help("grass:r.geomorphon")
+# output not shown
+```
+
+Obliczenie geomorfonów wymaga wejściowego DEM (`elevation`) i może być dostosowane za pomocą zestawu opcjonalnych argumentów.
+Obejmuje to`search`\-- długość,dla której obliczana jest linia wzroku, oraz`-m`\-- flagę określającą, że wartość wyszukiwania będzie podana w metrach (a nie w liczbie komórek).
+Więcej informacji na temat dodatkowych argumentów można znaleźć w oryginalnym artykule oraz w[dokumentacji](https://grass.osgeo.org/grass-stable/manuals/r.geomorphon.html)[GRASS GIS](https://grass.osgeo.org/grass-stable/manuals/r.geomorphon.html).
+
+```{r, eval=FALSE}
+dem_geomorph = qgis_run_algorithm("grass:r.geomorphon",
+  elevation = dem,
+  `-m` = TRUE, search = 120
+)
+```
+
+Nasz wynik,`dem_geomorph$forms`, zawiera plik rastrowy z dziesięcioma kategoriami — każda reprezentuje formę terenu.
+Możemy wczytać go do R za pomocą`qgis_as_terra()`, a następnie zwizualizować (rysunek @ref(fig:qgis-raster-map), prawy panel) lub wykorzystać w kolejnych obliczeniach.
+
+```{r, eval=FALSE}
+dem_geomorph_terra = qgis_as_terra(dem_geomorph$forms)
+```
+
+Co ciekawe, istnieją powiązania między niektórymi geomorfami a wartościami TWI, jak pokazano na rysunku @ref(fig:qgis-raster-map).
+Najwyższe wartości TWI występują głównie w dolinach i zagłębieniach, podczas gdy najniższe wartości obserwuje się, zgodnie z oczekiwaniami, na grzbietach.
+
+```{r qgis-raster-map, echo=FALSE, fig.cap="Topographic wetness index (TWI, left panel) and geomorphons (right panel) derived for the Mongón study area."}
+knitr::include_graphics("images/10-qgis-raster-map.png")
+```
+
+## SAGA{#saga}
+
+System automatycznych analiz geonaukowych (SAGA\\index{SAGA}; tabela @ref(tab:gis-comp)) umożliwia uruchamianie modułów SAGA za pośrednictwem interfejsu wiersza poleceń\\index{command line interface}(`saga_cmd.exe`w systemie Windows oraz po prostu`saga_cmd`w systemie Linux) (zobacz[wiki](https://sourceforge.net/p/saga-gis/wiki/Executing%20Modules%20with%20SAGA%20CMD/)[SAGA poświęcone modułom](https://sourceforge.net/p/saga-gis/wiki/Executing%20Modules%20with%20SAGA%20CMD/)).
+Ponadto dostępny jest interfejs w języku Python (SAGA Python API\\index{API}).
+**Rsagacmd**\\index{Rsagacmd (package)}wykorzystuje ten pierwszy do uruchamiania SAGA\\index{SAGA}z poziomu R.
+
+W tej sekcjiużyjemy**Rsagacmd**do wyznaczenia obszarów o podobnych wartościach znormalizowanego wskaźnika różnicy wegetacji (NDVI) na obszarze badań Mongón w Peru we wrześniu 2000 r. (rysunek @ref(fig:sagasegments), lewy panel) przy użyciu algorytmu rozrostu regionu z nasionami z SAGA\\index{segmentation}.
+
+```{r, eval=FALSE}
+ndvi = rast(system.file("raster/ndvi.tif", package = "spDataLarge"))
+```
+
+Aby rozpocząć korzystanie z**Rsagacmd**, należy uruchomićfunkcję`saga_gis()`.
+Służy to dwóm głównym celom:
+
+- Dynamicznie^ [Oznacza to, że dostępne biblioteki będą zależały od zainstalowanej wersji SAGA.] tworzy nowy obiekt zawierający linki do wszystkich ważnych bibliotek i narzędzi SAGA
+- . Konfiguruje ogólne opcje pakietu, takie jak`raster_backend`(pakiet R do obsługi danych rastrowych),`vector_backend`(pakiet R do obsługi danych wektorowych) oraz`cores`(maksymalna liczba rdzeni procesora używanych do przetwarzania, domyślnie: wszystkie)
+
+```{r, eval=FALSE}
+library(Rsagacmd)
+saga = saga_gis(raster_backend = "terra", vector_backend = "sf")
+```
+
+Naszobiekt`saga`zawiera połączenia ze wszystkimi dostępnymi narzędziami SAGA.Jest
+on zorganizowany jako lista bibliotek (grup narzędzi), a wewnątrz każdej biblioteki znajduje się lista narzędzi.
+Dostęp do dowolnego narzędzia uzyskujemy za pomocąznaku`$`(pamiętajmy o użyciu klawisza TAB do autouzupełniania).
+
+Algorytm rozrostu regionu z nasionami działa\\index{segmentation!seeded region growing algorithm} w dwóch głównych etapach [@adams_seeded_1994;@bohner_image_2006] .
+Po pierwsze, komórki początkowe („nasiona”) są generowane poprzez znalezienie komórek o najmniejszej wariancji w lokalnych oknach o określonym rozmiarze\\index{autocorrelation!spatial}.
+Po drugie, algorytm rozrostu regionu jest używany do łączenia sąsiednich pikseli nasion w celu utworzenia jednorodnych obszarów.
+
+```{r, eval=FALSE}
+sg = saga$imagery_segmentation$seed_generation
+```
+
+W powyższym przykładzie najpierw wskazaliśmybibliotekę`imagery_segmentation`,a następnie jejnarzędzie`seed_generation`.
+Przypisaliśmy je również do obiektu`sg` , aby nie musieć ponownie wpisywać całego kodu narzędzia w kolejnych krokach.^ [Więcej informacji na temat tego narzędzia można znaleźć na stronie https://saga-gis.sourceforge.io/saga_tool_doc/8.3.0/imagery_segmentation_2.html.]
+Jeśli po prostu wpiszemy`sg`, otrzymamy krótkie podsumowanie narzędzia oraz ramkę danych zawierającą jego parametry, opisy i wartości domyślne.
+Można również użyć`tidy(sg)`,aby wyodrębnić samą tabelę parametrów.
+Narzędzie`seed_generation`przyjmuje zbiór danych rastrowych jako pierwszy argument (`features`); opcjonalne argumenty obejmują`band_width`,który określa rozmiar początkowych wielokątów.
+
+```{r, eval=FALSE}
+ndvi_seeds = sg(ndvi, band_width = 2)
+# plot(ndvi_seeds$seed_grid)
+```
+
+Naszym wynikiem jest lista trzech obiektów:`variance`— mapa rastrowa lokalnej wariancji,`seed_grid`— mapa rastrowa z wygenerowanymi nasionami oraz`seed_points`— obiekt wektorowy przestrzenny z wygenerowanymi nasionami.
+
+Drugim narzędziem SAGA, z którego korzystamy, jest`seeded_region_growing` .^ [Więcej informacji na temat tego narzędzia można znaleźć na stronie https://saga-gis.sourceforge.io/saga_tool_doc/8.3.0/imagery_segmentation_3.html.]
+Narzędzie`seeded_region_growing`wymaga dwóch danych wejściowych: naszego`seed_grid`obliczonego w poprzednim kroku orazobiektu rastrowego`ndvi`.
+Dodatkowo możemy określić kilka parametrów, takich jak`normalize`w celu standaryzacji obiektów wejściowych,`neighbour`(4- lub 8-sąsiedztwo) oraz`method`.
+Ostatni parametr można ustawić na`0`lub`1`(rozrost regionu opiera się na wartościach komórek rastrowych i ich pozycjach lub tylko na wartościach).
+Aby uzyskać bardziej szczegółowy opis metody, zobacz @bohner\_image\_2006.
+
+Tutaj zmienimy jedynie`method`na`1`, co oznacza, że nasze regiony wyjściowe zostaną utworzone wyłącznie na podstawie podobieństwa ich wartości NDVI.
+
+```{r, eval=FALSE}
+srg = saga$imagery_segmentation$seeded_region_growing
+ndvi_srg = srg(ndvi_seeds$seed_grid, ndvi, method = 1)
+plot(ndvi_srg$segments)
+```
+
+Narzędzie zwraca listę trzech obiektów:`segments`,`similarity`,`table`.
+Obiekt`similarity`jest rastrem pokazującym podobieństwo między nasionami a pozostałymi komórkami, a`table`jest ramką danych przechowującą informacje o nasionach wejściowych.
+Wreszcie`ndvi_srg$segments`to raster z uzyskanymi obszarami (rysunek @ref(fig:sagasegments), prawy panel).
+Możemy go przekształcić w wielokąty za pomocą`as.polygons()`i`st_as_sf()`(sekcja @ref(spatial-vectorization)).
+
+```{r, eval=FALSE}
+ndvi_segments = ndvi_srg$segments |>
+  as.polygons() |>
+  st_as_sf()
+```
+
+```{r sagasegments, echo=FALSE, fig.cap="Normalized difference vegetation index (NDVI, left panel) and NDVI-based segments derived using the seeded region growing algorithm for the Mongón study area."}
+knitr::include_graphics("images/10-saga-segments.png")
+```
+
+Powstałe wielokąty (segmenty) reprezentują obszary o podobnych wartościach.
+Można je również dalej agregować w większe wielokąty przy użyciu różnych technik, takich jak klasteryzacja (np.metoda*k*\-*średnich*), regionalizacja (np. SKATER) lub metody klasyfikacji nadzorowanej.
+Możesz spróbować to zrobić w sekcji Ćwiczenia.
+
+R posiada również inne narzędzia służące do tworzenia wielokątów o podobnych wartościach (tzw. segmentów).
+Należy do nich pakiet**SegOptim** [@goncalves_segoptim_2019] , który umożliwia uruchamianie kilku algorytmów segmentacji obrazu, oraz pakiet**supercells** [@nowosad_extended_2022 ,] który implementujealgorytm superpikseli\index{segmentation!superpixels}SLIC do pracy z danymi geoprzestrzennymi.
+
+## GRASS GIS{#grass}
+
+W latach 1982–1995Laboratorium Badań Inżynierii Budowlanej Armii Stanów Zjednoczonych (USA-CERL) stworzyło rdzeń Systemu Wsparcia Analizy Zasobów Geograficznych (GRASS GIS)\\index{GRASS GIS}(Tabela @ref(tab:gis-comp); @neteler\_open\_2008).
+Środowisko akademickie kontynuowało te prace od 1997 roku.
+Podobnie jak SAGA\\index{SAGA} , GRASS GIS początkowo skupiał się na przetwarzaniu rastrów, a dopiero później, począwszy od wersji GRASS GIS 6.0, dodano zaawansowaną funkcjonalność wektorową [@bivand_applied_2013] .
+
+GRASS GIS przechowuje dane wejściowe w wewnętrznej bazie danych.
+Jeśli chodzi o dane wektorowe, GRASS GIS jest domyślnie topologicznym systemem GIS, tzn. przechowuje geometrię sąsiadujących obiektów tylko raz.
+SQLite jest domyślnym sterownikiem bazy danych do zarządzania atrybutami wektorowymi, a atrybuty są powiązane z geometrią, tzn. z bazą danych GRASS GIS, za pomocą kluczy ([zarządzanie wektorami w GRASS GIS](https://grasswiki.osgeo.org/wiki/Vector_Database_Management#GRASS_GIS_vector_management_model)).
+
+Zanim będzie można korzystać z GRASS GIS, należy skonfigurować bazę danych GRASS GIS\\indeks{spatial database}(również z poziomu R), a użytkownicy mogą na początku uznać ten proces za nieco zniechęcający.
+Przede wszystkim baza danych GRASS GIS wymaga własnego katalogu, który z kolei zawiera lokalizację (więcej informacjimożna znaleźćna stronach pomocydotyczących[bazy danych](https://grass.osgeo.org/grass-stable/manuals/grass_database.html)[GRASS GIS](https://grass.osgeo.org/grass-stable/manuals/grass_database.html)pod adresem[grass.osgeo.org](https://grass.osgeo.org/grass-stable/manuals/index.html)).
+Lokalizacja przechowuje dane geograficzne dla jednego projektu lub jednego obszaru.
+W ramach jednej lokalizacji może istnieć kilka zestawów map, które zazwyczaj odnoszą się do różnych użytkowników lub różnych zadań.
+Każda lokalizacja posiada również zestaw map PERMANENT — obowiązkowy zestaw map, który jest tworzony automatycznie.
+Aby udostępnić dane geograficzne wszystkim użytkownikom projektu, właściciel bazy danych może dodać dane przestrzenne do zestawu map PERMANENT.
+Ponadto zestaw map PERMANENT przechowuje projekcję, zasięg przestrzenny oraz domyślną rozdzielczość dla danych rastrowych.
+Podsumowując — baza danych GRASS GIS może zawierać wiele lokalizacji (wszystkie dane w jednej lokalizacji mają ten sam układ odniesienia), a każda lokalizacja może przechowywać wiele zestawów map (grup zbiorów danych).Więcej informacji na tematsystemubaz danych przestrzennych GRASS GIS\\index
+{spatial database}można znaleźć w @neteler\_open\_2008 orazwprzewodniku[szybkiego startu GRASS GIS](https://grass.osgeo.org/grass-stable/manuals/helptext.html).
+Aby szybko korzystać z GRASS GIS w środowisku R, użyjemypakietu**link2GI**, jednak można również skonfigurować bazę danych GRASS GIS krok po kroku.
+Zobacz[sekcję GRASS w R](https://grasswiki.osgeo.org/wiki/R_statistics/rgrass#GRASS_within_R), aby dowiedzieć się, jak to zrobić.
+Należy pamiętać,że instrukcje kodowe w poniższych akapitach mogą być trudne do zrozumienia przy pierwszym użyciu GRASS GIS,ale przechodząc przez kod linia po linii i analizując wyniki pośrednie, logika stojąca za nim powinna stać się jeszcze bardziej jasna.
+
+W tym miejscu przedstawiamy**rgrass**\\index{rgrass (package)}wraz z jednym z najciekawszych problemów w naukach o GIS: problemem komiwojażera\\index{traveling salesman}.
+Załóżmy,że komiwojażer chce odwiedzić 24 klientów.
+Dodatkowo komiwojażer chce rozpocząć i zakończyć podróż w domu, co daje łącznie 25 lokalizacji, pokonując przy tym możliwie najkrótszą odległość.
+ Istnieje jedno najlepsze rozwiązanie tego problemu; jednak sprawdzenie wszystkich możliwych rozwiązań jest (w większości) niemożliwe dla współczesnych komputerów [@longley_geographic_2015] .
+W naszym przypadku liczba możliwych rozwiązań odpowiada`(25 - 1)! / 2`, tj. silni z 24 podzielonej przez 2 (ponieważ nie rozróżniamy kierunku do przodu ani do tyłu).
+Nawet jeśli jedna iteracja może zostać wykonana w ciągu nanosekundy, nadal odpowiada to`r format(factorial(25 - 1) / (2 * 10^9 * 3600 * 24 * 365))`lat.
+Na szczęście istnieją sprytne, niemal optymalne rozwiązania, które działają w ułamku tej niewyobrażalnej ilości czasu.
+GRASS GIS\\index{GRASS GIS}zapewnia jedno z takich rozwiązań (więcej szczegółów można znaleźć w[v.net.salesman](https://grass.osgeo.org/grass-stable/manuals/v.net.salesman.html)).
+W naszym przypadku chcielibyśmy znaleźć najkrótszą trasę\\index{shortest route}między pierwszymi 25 stacjami rowerowymi (zamiast klientów) na ulicach Londynu (i po prostu zakładamy,że pierwsza stacja rowerowa odpowiada domowi naszego podróżującego sprzedawcy\\index{traveling salesman}).
+
+```{r 09-gis-24}
+data("cycle_hire", package = "spData")
+points = cycle_hire[1:25, ]
+```
+
+Oprócz danych dotyczących punktów wypożyczania rowerów potrzebujemy sieci ulic dla tego obszaru.
+Możemy ją pobrać z OpenStreetMap\\index{OpenStreetMap}przy pomocypakietu**osmdata**\\index{osmdata (package)}(zobacz również sekcję @ref(retrieving-data)).
+Aby to zrobić, ograniczamy zapytanie o sieć ulic (w języku OSM nazywaną „highway”) do prostokąta ograniczającego\\index{bounding box}z`points`i dołączamy odpowiednie dane jakoobiekt`sf`\\index{sf}.
+`osmdata_sf()`zwraca listę zawierającą kilka obiektów przestrzennych (punkty, linie, wielokąty itp.), ale w tym przypadku zachowujemy tylko obiekty liniowe wraz z powiązanymi identyfikatorami.^\[Dla wygody czytelnika można dołączyć`london_streets`do środowiska globalnego za pomocą`data("london_streets", package = "spDataLarge")`.\]
+
+```{r 09-gis-25, eval=FALSE}
+library(osmdata)
+b_box = st_bbox(points)
+london_streets = opq(b_box) |>
+  add_osm_feature(key = "highway") |>
+  osmdata_sf()
+london_streets = london_streets[["osm_lines"]]
+london_streets = select(london_streets, osm_id)
+```
+
+Skoro mamy już dane, możemy przejść do uruchomieniasesjiGRASS GIS\\index{GRASS GIS}.
+Na szczęścienarzędzie`linkGRASS()`zpakietu**link2GI**pozwala skonfigurować środowisko GRASS GIS za pomocą zaledwie jednej linii kodu.
+Jedyne,co musisz podać, to obiekt przestrzenny, który określa projekcję i zasięg przestrzennej bazy danych\\index{spatial database}.
+Najpierw narzędzie`linkGRASS()`wyszukuje wszystkieinstalacjeGRASS GIS\\index{GRASS GIS}na Twoim komputerze.
+Ponieważ ustawiliśmy`ver_select`na`TRUE`, możemy interaktywnie wybrać jedną ze znalezionych instalacji GRASS GIS.
+Jeśli jest tylko jedna instalacja,`linkGRASS()`automatycznie ją wybiera.
+Następnie`linkGRASS()`nawiązuje połączenie z GRASS GIS.
+
+```{r 09-gis-30, eval=FALSE}
+library(rgrass)
+link2GI::linkGRASS(london_streets, ver_select = TRUE)
+```
+
+Zanim będziemy mogli korzystać z geoalgorytmów GRASS GIS\\index{geoalgorithm}, musimy również dodać dane do bazy danych przestrzennej GRASS GIS\\index{spatial database}.
+Na szczęście funkcja pomocnicza`write_VECT()`robi to za nas.
+(Użyj`write_RAST()`dla danych rastrowych.)
+W naszym przypadku dodajemy dane dotyczące ulic i punktów wypożyczania rowerów, wykorzystując tylko pierwszą kolumnę atrybutów, i nazywamy jew GRASS GISodpowiednio`london_streets`oraz`points`.
+
+```{r 09-gis-31, eval=FALSE}
+write_VECT(terra::vect(london_streets), vname = "london_streets")
+write_VECT(terra::vect(points[, 1]), vname = "points")
+```
+
+Pakiet**rgrass**oczekuje danych wejściowych i generuje dane wyjściowe w postaciobiektów**typu terra**.
+Dlatego musimy przekonwertować naszewektory przestrzenne`sf`naobiektytypu**terra**`SpatVector`za pomocąfunkcji`vect()`,aby móc korzystać z`write_VECT()`.
+ Więcej informacji na temat konwersji między klasami przestrzennymi w języku R można znaleźć w wpisie na blogu (Konwersje między różnymi klasami przestrzennymi w języku R) [https://geocompx.org/post/2021/spatial-classes-conversion/] oraz w
+ winietce (Wymuszanie typów między formatami obiektów) [https://CRAN.R-project.org/package=rgrass/vignettes/coerce.html] .
+
+Teraz oba zbiory danych znajdują się w bazie danych GRASS GIS.
+Aby przeprowadzićanalizęsieciową{network}, potrzebujemy topologicznie czystej sieci ulic{topology cleaning}.Narzędzie
+GRASS GIS`"v.clean"`zajmuje się między innymi usuwaniem duplikatów, małych kątów i wiszących elementów.
+W tym miejscu dzielimy linie na każdym skrzyżowaniu, aby zapewnić, że algorytm wyznaczania trasy będzie mógł faktycznie skręcić w prawo lub w lewo na skrzyżowaniu, a wynik zapisujemy w obiekcie GRASS GIS o nazwie`streets_clean`.
+
+```{r 09-gis-32, eval=FALSE}
+execGRASS(
+  cmd = "v.clean", input = "london_streets", output = "streets_clean",
+  tool = "break", flags = "overwrite"
+)
+```
+
+
+
+```{block2 06-raster-vector-22, type="rmdnote"}
+To learn about the possible arguments and flags of the GRASS GIS modules, you can use the `help` flag.
+For example, try `execGRASS("g.region", flags = "help")`.
+```
+
+Jest prawdopodobne, że kilka punktów naszych stacji rowerowych nie będzie leżało dokładnie na odcinku ulicy.
+Jednak aby znaleźć najkrótszą trasę{shortest route}między nimi, musimy połączyć je z najbliższym odcinkiem ulicy.Operator
+connect w`"v.net"`robi właśnie to.
+Wynik zapisujemy w`streets_points_con`.
+
+```{r 09-gis-32b, eval=FALSE}
+execGRASS(
+  cmd = "v.net", input = "streets_clean", output = "streets_points_con",
+  points = "points", operation = "connect", threshold = 0.001,
+  flags = c("overwrite", "c")
+)
+```
+
+Otrzymany, oczyszczony zbiór danych służy jako dane wejściowe dlaalgorytmu„`"v.net.salesman"`”, który ostatecznie wyznacza najkrótszą trasę między wszystkimi stacjami wypożyczalni rowerów.
+Jednym z jego argumentów jestparametr`center_cats`, który wymaga podania zakresu liczbowego jako danych wejściowych.Zakres
+ten określa punkty, dla których należy obliczyć najkrótszą trasę.
+Ponieważ chcemy obliczyć trasę dla wszystkich stacji rowerowych, ustawiamy go na`1-25`.
+Aby uzyskać dostęp do strony pomocy GRASS GIS dotyczącejalgorytmu„Traveling Salesman”{traveling salesman}oraz „index”{algorithm}, należy uruchomić polecenie`execGRASS("g.manual", entry = "v.net.salesman")`.
+
+```{r 09-gis-33, eval=FALSE}
+execGRASS(
+  cmd = "v.net.salesman", input = "streets_points_con",
+  output = "shortest_route", center_cats = paste0("1-", nrow(points)),
+  flags = "overwrite"
+)
+```
+
+Aby zobaczyć nasz wynik, wczytujemy go do R, konwertujemy naobiekt typu`sf`, zachowując jedynie geometrię, i wizualizujemy za pomocąpakietu**mapview**(rysunek @ref(fig:grass-mapview) oraz sekcja @ref(interactive-maps)).
+
+```{r 09-gis-34, eval=FALSE}
+route = read_VECT("shortest_route") |>
+  st_as_sf() |>
+  st_geometry()
+mapview::mapview(route) + points
+```
+
+```{r grass-mapview, fig.cap="Shortest route (blue line) between 24 cycle hire stations (blue dots) on the OSM street network of London.", fig.scap="Shortest route between 24 cycle hire stations.", echo=FALSE, out.width="80%"}
+knitr::include_graphics("images/10_shortest_route.png")
+```
+
+```{r 09-gis-35, eval=FALSE, echo=FALSE}
+library(mapview)
+m_1 = mapview(route) + points
+mapview::mapshot(m_1,
+  file = file.path(getwd(), "images/09_shortest_route.png"),
+  remove_controls = c(
+    "homeButton", "layersControl",
+    "zoomControl"
+  )
+)
+```
+
+W trakcie tego procesu należy zwrócić uwagę na kilka istotnych kwestii:
+
+- mogliśmy skorzystać z bazy danych przestrzennych GRASS GIS\\index{spatial database}, która umożliwia szybsze przetwarzanie.
+  Oznacza to, że na początku wyeksportowaliśmy tylko dane geograficzne.
+  Następnie utworzyliśmy nowe obiekty, ale do R zaimportowaliśmy tylko wynik końcowy.
+  Aby sprawdzić, które zbiory danych są obecnie dostępne, uruchom`execGRASS("g.list", type = "vector,raster", flags = "p")`.
+- Mogliśmy również uzyskać dostęp do istniejącej już przestrzennej bazy danych GRASS GIS z poziomu R.
+  Przed zaimportowaniem danych do R warto wykonać pewne (przestrzenne) podzbiorowanie\\indeksowanie{vector!subsetting}.
+  Użyj`"v.select"`i`"v.extract"`dla danych wektorowych.
+  `"db.select"`pozwala wybrać podzbiory tabeli atrybutów warstwy wektorowej bez zwracania odpowiadającej geometrii.
+- Możesz również uruchomić R z poziomu działającej sesjiGRASS GIS\\index{GRASS GIS}
+- .
+- [Aby uzyskać więcej informacji, zapoznaj się z @bivand_applied_2013] .
+- Zapoznaj się z doskonałą[pomocą online GRASS GIS](https://grass.osgeo.org/grass-stable/manuals/)lub`execGRASS("g.manual", flags = "i")`, aby uzyskać więcej informacji na temat każdego dostępnego algorytmu geograficznego GRASS GIS\\index{geoalgorithm}.
+
+## Kiedy czego używać?
+
+Trudno jest polecić jeden interfejs R-GIS, ponieważ jego wybór zależy od osobistych preferencji, wykonywanych zadań oraz znajomości różnychpakietów oprogramowaniaGIS\\index{GIS},co z kolei prawdopodobnie zależy od danej dziedziny.
+Jak wspomniano wcześniej, SAGA\\index{SAGA}szczególnie dobrze radzi sobie z szybkim przetwarzaniem dużych (wysokiej rozdzielczości) zbiorów danychrastrowych\\index{raster} i jest często używana przez hydrologów, klimatologów i gleboznawców [@conrad_system_2015] .
+Z koleiGRASS GIS\\index{GRASS GIS}jest jedynym przedstawionym tutaj systemem GIS obsługującym topologiczną bazę danych przestrzennych, co jest szczególnie przydatne w analizach sieciowych, ale także w badaniach symulacyjnych.
+QGISS\\index{QGIS}jest znacznie bardziej przyjazny dla użytkownika w porównaniu z GRASS GIS i SAGA, zwłaszcza dla początkujących użytkowników GIS, i prawdopodobnie jest najpopularniejszym systemem GIS typu open source.
+Dlatego**qgisprocess**\\index{qgisprocess (package)}jest odpowiednim wyborem dla większości zastosowań.
+Jego główne zalety to:
+
+- Ujednolicony dostęp do kilku systemów GIS, a tym samym udostępnienie ponad 1000 algorytmów geograficznych (tabela @ref(tab:gis-comp)), w tym powtarzających się funkcji; można na przykład wykonywać operacje nakładania przy użyciu QGIS-\\index{QGIS}, SAGA-\\index{SAGA}lub algorytmy geograficzne GRASS GIS\\index{GRASS GIS}
+- Automatyczne konwersje formatów danych (SAGA używaplików siatki`.sdat`, a GRASS GIS używa własnego formatu bazy danych, ale QGIS zajmie się odpowiednimi konwersjami)
+- Automatyczne przekazywanie obiektów geograficznych R do algorytmów geograficznych QGIS\\index{geoalgorithm}i z powrotem do R
+- Funkcje ułatwiające obsługę argumentów nazwanych i automatyczne pobieranie wartości domyślnych (zainspirowane**rgrass**\\index{rgrass (package)})
+
+Oczywiście istnieją przypadki, w których zdecydowanie należy użyć jednego z innych mostów R-GIS.
+Chociaż QGIS jest jedynym systemem GIS zapewniającym ujednolicony interfejs do kilkupakietów oprogramowaniaGIS\\index{GIS}, zapewnia on dostęp tylko do podzbioru odpowiednich algorytmów geograficznych innych producentów (więcej informacji można znaleźć w @muenchow\_rqgis:\_2017).
+Dlatego, aby korzystać z pełnego zestawu funkcji SAGA i GRASS GIS, należy pozostać przy**Rsagacmd**\\index{Rsagacmd (package)}oraz**rgrass**.
+Ponadto, jeśli chcesz przeprowadzać symulacje przy pomocy geobazy danych\\index{spatial database} [@krug_clearing_2010] , używajbezpośrednio**rgrass,**ponieważ**qgisprocess**zawsze uruchamia nową sesję GRASS GIS dla każdego wywołania.
+Wreszcie, jeśli potrzebujesz danych poprawnych topologicznie i/lub funkcji zarządzania bazą danych przestrzennych, takich jak dostęp dla wielu użytkowników, zalecamy korzystanie z GRASS GIS.
+
+Należy pamiętać, że istnieje wiele innych pakietów oprogramowania GIS, które posiadają interfejs skryptowy, ale dla których nie ma dedykowanego pakietu R umożliwiającego dostęp do nich: gvSig, OpenJump oraz Orfeo Toolbox.^\[Należy pamiętać, że**link2GI**zapewnia częściową integrację z Orfeo Toolbox\\index{Orfeo Toolbox}oraz że dostęp do algorytmów geograficznych Orfeo Toolbox można uzyskać również za pośrednictwem**qgisprocess**. Należy również zauważyć, żedostęp doTauDEM\\index{TauDEM}można uzyskać z języka R za pomocą pakietu**traudem**.\]
+
+## Pomosty do GDAL{#gdal}
+
+Jak omówiono w rozdziale @ref(read-write), GDAL\\index{GDAL}jest biblioteką niskiego poziomu, która obsługuje wiele formatów danych geograficznych.
+GDAL jest tak skuteczny, że większość programów GIS wykorzystuje GDAL\\index{GDAL}w tle do importowania i eksportowania danych geograficznych, zamiast odkrywać Amerykę na nowo i używać specjalnie napisanych kodów do odczytu i zapisu.
+Jednak GDAL\\index{GDAL}oferuje więcej niż tylko operacje wejścia/wyjścia danych.
+Posiada[narzędzia](https://gdal.org/programs/index.html)do[przetwarzania geoprzestrzennego](https://gdal.org/programs/index.html)danych wektorowych i rastrowych, funkcje do tworzenia[kafelków](https://gdal.org/programs/gdal2tiles.html#gdal2tiles)do udostępniania danych rastrowych online oraz szybką[rasteryzację](https://gdal.org/programs/gdal_rasterize.html#gdal-rasterize)danych wektorowych.
+Ponieważ GDAL jest narzędziem wiersza poleceń, dostęp do wszystkich jego poleceń można uzyskać z poziomu R za pomocąpolecenia`system()`.
+
+Poniższy fragment kodu ilustruje tę funkcjonalność:
+`linkGDAL()`przeszukuje komputer w poszukiwaniu działającejinstalacjiGDAL\\index{GDAL}i dodaje lokalizację plików wykonywalnych do zmiennej PATH, umożliwiając wywołanie GDAL (zwykle wymagane tylko w systemie Windows).
+
+```{r, eval=FALSE}
+link2GI::linkGDAL()
+```
+
+Teraz możemy użyćfunkcji`system()`,aby wywołać dowolne narzędzie GDAL.
+Na przykład`ogrinfo`udostępnia metadane zbioru danych wektorowych.
+W tym przypadku wywołamy to narzędzie z dwoma dodatkowymi flagami:`-al`,aby wyświetlić listę wszystkich obiektów we wszystkich warstwach,oraz`-so`, aby uzyskać tylko podsumowanie (a nie pełną listę geometrii):
+
+```{r 09-gis-36, eval=FALSE, message=FALSE}
+our_filepath = system.file("shapes/world.gpkg", package = "spData")
+cmd = paste("ogrinfo -al -so", our_filepath)
+system(cmd)
+#> INFO: Open of `.../spData/shapes/world.gpkg'
+#>       using driver `GPKG' successful.
+#>
+#> Layer name: world
+#> Geometry: Multi Polygon
+#> Feature Count: 177
+#> Extent: (-180.000000, -89.900000) - (179.999990, 83.645130)
+#> Layer SRS WKT:
+#> ...
+```
+
+Inne powszechnie używane narzędzia GDAL to:
+
+- `gdalinfo`: udostępnia metadane zbioru danych rastrowych
+- `gdal_translate`: konwertuje pliki między różnymi formatami rastrowymi
+- `ogr2ogr`: konwertuje pliki między różnymi formatami wektorowymi
+- `gdalwarp`: dokonuje reprojekcji, transformacji i przycinania zbiorów danych rastrowych
+- `gdaltransform`: przekształca współrzędne
+
+Odwiedź stronę<https://gdal.org/programs/>, aby zapoznać się z pełną listą narzędzi GDAL oraz przeczytać ich pliki pomocy.
+
+„Łącze” do GDAL udostępnione przez**link2GI**może posłużyć jako podstawa do wykonywania bardziej zaawansowanych zadań z wykorzystaniem GDAL z poziomu języka R lub wiersza poleceń systemu.
+TauDEM (<https://hydrology.usu.edu/taudem/>) oraz Orfeo Toolbox (<https://www.orfeo-toolbox.org/>) to inne biblioteki/programy do przetwarzania danych przestrzennych oferujące interfejs wiersza poleceń — powyższy przykład pokazuje, jak uzyskać dostęp do tych bibliotek z wiersza poleceń systemu za pośrednictwem języka R.
+To z kolei może być punktem wyjścia do stworzenia odpowiedniego interfejsu do tych bibliotek w postaci nowych pakietów R.
+
+Zanim jednak zabierzesz się za projekt tworzenia nowego pomostu, warto pamiętać o możliwościach istniejących pakietów R oraz o tym, żewywołaniatypu`system()`mogą nie być niezależne od platformy (mogą nie działać na niektórych komputerach).
+Z drugiej strony,**sf**i**terra**przenoszą większość możliwości oferowanych przez GDAL\\index{GDAL}, GEOS\\index{GEOS}oraz PROJ\\index{PROJ}do języka R poprzezinterfejsR/C++\\index{C++}udostępniany przez**Rcpp**, co pozwala uniknąćwywołań`system()`.
+Istnieją również**biblioteki vapour**i**gdalraster,**które zapewniają niskopoziomowe interfejsy do GDAL\\index{GDAL}.
+
+## Mosty do baz danych przestrzennych{#postgis}
+
+\\index{spatial database}Systemy
+zarządzania bazami danych przestrzennych (spatial DBMS) przechowują dane przestrzenne i nieprzestrzenne w uporządkowany sposób.
+Mogą one organizować duże zbiory danych w powiązane tabele (entities) za pomocą unikalnych identyfikatorów (kluczy głównych i obcych) oraz w sposób domyślny poprzez przestrzeń (na przykład w przypadku połączenia przestrzennego).Jest
+to przydatne, ponieważ zbiory danych geograficznych mają tendencję do szybkiego powiększania się i stają się nieuporządkowane.
+Bazy danych umożliwiają wydajne przechowywanie i przeszukiwanie dużych zbiorów danych w oparciu o pola przestrzenne i nieprzestrzenne, a także zapewniają dostęp dla wielu użytkowników orazobsługętopologii\\index{topological relations}.
+
+Najważniejszym systemem baz danych przestrzennych typu open source\\index{spatial database}jest PostGIS\\index{PostGIS} [@obe_postgis_2015] .Ważne są
+mostki R do systemów DBMS przestrzennych,takich jak PostGIS\\index{PostGIS}, które umożliwiają dostęp do ogromnych magazynów danych bez ładowania kilku gigabajtów danych geograficznych do pamięci RAM, co mogłoby spowodować awarię sesji R.
+W dalszej części tego rozdziału pokazano, jak wywołać PostGIS z języka R, w oparciu o przykład „Hello real-world” z*książki PostGIS in Action, Second Edition* [@obe_postgis_2015] — dziękujemy wydawnictwu Manning Publications oraz Reginie Obe i Leo Hsu za zgodę na wykorzystanie tego przykładu.
+
+Poniższy kod wymaga działającego połączenia internetowego, ponieważ uzyskujemy dostęp dobazy danychPostgreSQL/PostGIS\\index{PostGIS}, która znajduje się w chmurze QGIS Cloud (<https://qgiscloud.com/\).^[Cloud>pozwala na przechowywanie danych geograficznych i map w chmurze.
+W tle wykorzystuje serwer QGIS oraz PostgreSQL/PostGIS.
+W ten sposób czytelnik może śledzić przykład PostGIS bez konieczności instalowania PostgreSQL/PostGIS na lokalnym komputerze.
+Dziękujemy zespołowi QGIS Cloud za udostępnienie tego przykładu.\]
+Naszym pierwszym krokiem jest tutaj utworzenie połączenia z bazą danych poprzez podanie jej nazwy, nazwy hosta oraz informacji o użytkowniku.
+
+```{r 09-gis-37, eval=FALSE}
+library(RPostgreSQL)
+conn = dbConnect(
+  drv = PostgreSQL(),
+  dbname = "rtafdf_zljbqm", host = "db.qgiscloud.com",
+  port = "5432", user = "rtafdf_zljbqm", password = "d3290ead"
+)
+```
+
+Nasz nowy obiekt,`conn`, jest po prostu ustanowionym połączeniem między naszą sesją R a bazą danych.Nie
+przechowuje on żadnych danych.
+
+Często pierwsze pytanie brzmi: „Jakie tabele znajdują się w bazie danych?”.
+Można na to odpowiedzieć za pomocą`dbListTables()`w następujący sposób:
+
+```{r 09-gis-38, eval=FALSE}
+dbListTables(conn)
+#> [1] "spatial_ref_sys" "topology"        "layer"           "restaurants"
+#> [5] "highways"
+```
+
+Odpowiedź brzmi: pięć tabel.
+Tutaj interesują nas tylkotabele`restaurants`i`highways`.
+Pierwsza z nich przedstawia lokalizacje restauracji fast-food w USA, a druga główne autostrady w USA.
+Aby dowiedzieć się o atrybutach dostępnych w tabeli, możemy uruchomić`dbListFields`:
+
+```{r 09-gis-39, eval=FALSE}
+dbListFields(conn, "highways")
+#> [1] "qc_id"        "wkb_geometry" "gid"          "feature"
+#> [5] "name"         "state"
+```
+
+Teraz, gdy znamy dostępne zbiory danych, możemy wykonać kilka zapytań — zadać bazie danych kilka pytań.
+Zapytanie musi być sformułowane w języku zrozumiałym dla bazy danych — zazwyczaj jest to SQL.
+Pierwsze zapytanie wybierze punkty`US Route 1`w stanie Maryland (`MD`) ztabeli`highways`.
+Należy zauważyć, że`read_sf()`pozwala nam odczytywać dane geograficzne z bazy danych,jeśli zostanie mu przekazane otwarte połączenie z bazą danych oraz zapytanie.
+Dodatkowo`read_sf()`musi wiedzieć,która kolumna reprezentuje geometrię (tutaj:`wkb_geometry`).
+
+```{r 09-gis-40, eval=FALSE}
+query = paste(
+  "SELECT *",
+  "FROM highways",
+  "WHERE name = 'US Route 1' AND state = 'MD';"
+)
+us_route = read_sf(conn, query = query, geom = "wkb_geometry")
+```
+
+W rezultacie otrzymujemy obiekt**sf**\-object\\index{sf}onazwie`us_route`typu`MULTILINESTRING`.
+
+Jak wspomnieliśmy wcześniej, możliwe jest nie tylko zadawanie pytań o charakterze nieprzestrzennym, ale także wyszukiwanie zbiorów danych na podstawie ich właściwości przestrzennych.
+Aby to pokazać, w następnym przykładzie dodano bufor o szerokości 35 kilometrów (35 000 m) wokół wybranej autostrady (rysunek @ref(fig:postgis)).
+
+```{r 09-gis-41, eval=FALSE}
+query = paste(
+  "SELECT ST_Union(ST_Buffer(wkb_geometry, 35000))::geometry",
+  "FROM highways",
+  "WHERE name = 'US Route 1' AND state = 'MD';"
+)
+buf = read_sf(conn, query = query)
+```
+
+Należy zauważyć, że było to zapytanie przestrzenne wykorzystujące funkcje (`ST_Union()`\\index{vector!union},`ST_Buffer()`\\index{vector!buffers}), które powinny być już znane.
+Znajdziesz je również wpakiecie**sf**, choć tutaj są zapisane małymi literami (`st_union()`,`st_buffer()`).
+W rzeczywistości nazwy funkcjipakietu**sf**w dużej mierze są zgodne zkonwencjami nazewniczymiPostGIS\\index{PostGIS}.^\[
+Prefiks`st`oznacza przestrzeń/czas.
+\]
+
+Ostatnie zapytanie pozwoli znaleźć wszystkie restauracje Hardee's (`HDE`) w strefie buforowej o promieniu 35 km (rysunek @ref(fig:postgis)).
+
+```{r 09-gis-42, eval=FALSE, warning=FALSE}
+query = paste(
+  "SELECT *",
+  "FROM restaurants r",
+  "WHERE EXISTS (",
+  "SELECT gid",
+  "FROM highways",
+  "WHERE",
+  "ST_DWithin(r.wkb_geometry, wkb_geometry, 35000) AND",
+  "name = 'US Route 1' AND",
+  "state = 'MD' AND",
+  "r.franchise = 'HDE');"
+)
+hardees = read_sf(conn, query = query)
+```
+
+Szczegółowe wyjaśnienie zapytania SQL dotyczącego danych przestrzennych można znaleźć w @obe\_postgis\_2015.
+Na koniec dobrą praktyką jest zamknięcie połączenia z bazą danych w następujący sposób:^\[Zamknięcie
+połączenia jest tutaj ważne, ponieważ QGIS Cloud (wersja darmowa) pozwala na tylko dziesięć jednoczesnych połączeń.
+\]
+
+```{r 09-gis-43, eval=FALSE}
+RPostgreSQL::postgresqlCloseConnection(conn)
+```
+
+```{r 09-gis-44, echo=FALSE}
+load("extdata/postgis_data.Rdata")
+```
+
+```{r postgis, echo=FALSE, fig.cap="Visualization of the output of previous PostGIS commands showing the highway (black line), a buffer (light yellow) and four restaurants (red points) within the buffer.", fig.scap="Visualization of the output of previous PostGIS commands."}
+library(tmap)
+tm_shape(buf) +
+  tm_polygons(fill = "#FFFDD0", col_alpha = 0.3) +
+  tm_shape(us_route) +
+  tm_lines(col = "black", lwd = 3) +
+  tm_shape(hardees) +
+  tm_symbols(fill = "#F10C26") +
+  tm_add_legend(type = "lines", col = "black", lwd = 3,
+                labels = "The US Route 1 highway") +
+  tm_add_legend(type = "polygons", fill = "#FFFDD0",
+                border.alpha = 0.3, labels = "35km buffer") +
+  tm_add_legend(type = "symbols", fill = "#F10C26",
+                labels = "Restaurants", shape = 21) +
+  tm_scalebar() + 
+  tm_layout(frame = FALSE)
+```
+
+W przeciwieństwie do PostGIS,**sf**obsługuje wyłącznie przestrzenne dane wektorowe.
+Aby wyszukiwać i manipulować danymi rastrowymi przechowywanymi w bazie danych PostGIS, należy użyć pakietu**rpostgis** [@bucklin_rpostgis_2018] i/lub narzędzi wiersza poleceń, takich jak`rastertopgsql`, które są częściąinstalacjiPostGIS\\index{PostGIS}.
+
+Ta podsekcja stanowi jedynie krótkie wprowadzenie do PostgreSQL/PostGIS.
+Niemniej jednak zachęcamy do przechowywania danych geograficznych i niegeograficznych w przestrzennym systemie zarządzania bazami danych (DBMS){spatial database},dołączając do globalnego środowiska R tylko te podzbiory,które są potrzebne do dalszej analizy (geo-)statystycznej.
+Więcej szczegółów na temat przedstawionych zapytań SQL oraz bardziej kompleksowe wprowadzenie do PostgreSQL/PostGIS w ogóle można znaleźć w @obe\_postgis\_2015.
+PostgreSQL/PostGIS to doskonały wybór jako otwarta przestrzenna baza danych.To samo
+dotyczy jednak lekkiego silnika bazy danych SQLite/SpatiaLite oraz GRASS GIS\\index{GRASS GIS}, który w tle korzysta z SQLite (patrz sekcja @ref(grass)).
+
+Jeśli Twoje zbiory danych są zbyt duże dla PostgreSQL/PostGIS i potrzebujesz zarządzania ogromnymi zbiorami danych przestrzennych oraz wysokiej wydajności zapytań, warto rozważyć zapytania geograficzne na dużą skalę w systemach obliczeniowych rozproszonych.
+Takie systemy wykraczają poza zakres tej książki, ale warto wspomnieć, że istnieje oprogramowanie open source zapewniające tę funkcjonalność.
+Do znanych projektów w tej dziedzinie należą[GeoMesa](http://www.geomesa.org/)i[Apache Sedona](https://sedona.apache.org/).
+Pakiet[**apache.sedona**](https://cran.r-project.org/package=apache.sedona)zapewnia interfejs do tego ostatniego.
+
+## Pomosty do technologii i usług chmurowych{#cloud}
+
+W ostatnich latach technologie chmurowe zyskują coraz większe znaczenie w Internecie.
+Dotyczy to również ich wykorzystania do przechowywania i przetwarzania danych przestrzennych.
+Najwięksi dostawcy usług chmurowych (Amazon Web Services, Microsoft Azure / Planetary Computer, Google Cloud Platform i inni)\\index{cloud computing}udostępniająna swoich platformachobszerne katalogi otwartych danych z obserwacji Ziemi, takich jak kompletnearchiwumSentinel-2\\index{Sentinel-2}.
+Możemy używać języka R i bezpośrednio łączyć się z tymi archiwami oraz przetwarzać dane z nich pochodzące, najlepiej z komputera znajdującego się w tej samej chmurze i regionie.
+
+Trzy obiecujące rozwiązania, które sprawiają, że praca z takimi archiwami obrazów na platformach chmurowych jest*łatwiejsza*i*bardziej wydajna*,to[SpatioTemporal Asset Catalog (STAC)](https://stacspec.org)\\index{STAC},[zoptymalizowany](https://www.cogeo.org/)[pod kątem chmury](https://www.cogeo.org/)format plików obrazów[GeoTIFF (COG)](https://www.cogeo.org/)\\index{COG}oraz koncepcja kostek danych\\index{data cube}.
+Sekcja @ref(staccog) przedstawia te poszczególne rozwiązania i krótko opisuje, w jaki sposób można z nich korzystać w języku R.
+
+Oprócz hostingu dużych archiwów danych,w ciągu ostatnich kilku lat uruchomionoliczne usługi w chmurze\\index{cloud computing}do przetwarzania danych z obserwacji Ziemi.
+Obejmuje to inicjatywę OpenEO\\index{OpenEO}— ujednolicony interfejs między językami programowania (w tym R) a różnymi usługami w chmurze.
+Więcej informacji na temat OpenEO można znaleźć w sekcji @ref(openeo).
+
+### STAC, COG i kostki danych w chmurze{#staccog}
+
+SpatioTemporal Asset Catalog (STAC)\\index{STAC}to ogólny format opisu danych czasowo-przestrzennych, który służy do opisywania różnorodnych zbiorów danych na platformach chmurowych, w tym obrazów, danych z radarów z syntetyczną aperturą (SAR) oraz chmur punktów.
+Oprócz prostych statycznych opisów katalogowych, STAC-API udostępnia usługę internetową umożliwiającą wyszukiwanie elementów (np. obrazów) w katalogach według przestrzeni, czasu i innych właściwości.
+W języku Rpakiet**rstac**\\index{rstac (package)} [@simoes_rstac_2021] umożliwia połączenie się z punktami końcowymi STAC-API i wyszukiwanie elementów.
+W poniższym przykładzie żądamy wszystkich obrazów z zestawu[danych](https://registry.opendata.aws/sentinel-2-l2a-cogs)[Sentinel-2 Cloud-Optimized GeoTIFF (COG) w Amazon Web Services](https://registry.opendata.aws/sentinel-2-l2a-cogs)\\index{COG},które przecinają się z wcześniej zdefiniowanym obszarem i czasem zainteresowania.
+Wynik zawiera wszystkie znalezione obrazy wraz z metadanymi (np. pokrycie chmur) oraz adresami URL wskazującymi na rzeczywiste pliki w AWS.
+
+```{r 09-stac-example, eval=FALSE}
+library(rstac)
+# Connect to the STAC-API endpoint for Sentinel-2 data
+# and search for images intersecting our AOI
+s = stac("https://earth-search.aws.element84.com/v0")
+items = s |>
+  stac_search(collections = "sentinel-s2-l2a-cogs",
+              bbox = c(7.1, 51.8, 7.2, 52.8),
+              datetime = "2020-01-01/2020-12-31") |>
+  post_request() |>
+  items_fetch()
+```
+
+Pamięć w chmurze różni się od lokalnych dysków twardych
+
+,
+
+a tradycyjne formaty plików obrazów nie sprawdzają się dobrze w przetwarzaniu geoprzestrzennym w chmurze.
+Format Cloud-optimized GeoTIFF\\index{COG}sprawia, że odczytywanie prostokątnych podzbiorów obrazu lub obrazów o niższej rozdzielczości jest znacznie bardziej wydajne.
+Jako użytkownik języka R nie musisz instalować niczego, aby pracować z plikami COG, ponieważ[GDAL](https://gdal.org)\\index{GDAL}(i każdy pakiet, który go wykorzystuje) już obsługuje pliki COG.
+Należy jednak pamiętać, że dostępność plików COG jest dużym plusem podczas przeglądania katalogów dostawców danych.
+
+W przypadku większych obszarów zainteresowania żądane obrazy są nadal stosunkowo trudne w obróbce: mogą wykorzystywać różne projekcje map, mogą się nakładać przestrzennie, a ich rozdzielczość przestrzenna często zależy od pasma spektralnego.
+Pakiet**gdalcubes**\\index{gdalcubes (package)} [@appel_gdalcubes_2019] może być używany do abstrakcji poszczególnych obrazów oraz do tworzenia i przetwarzania zbiorów obrazów jako czterowymiarowych kostek danych\index{data cube}.
+
+Poniższy kod przedstawia minimalny przykład tworzenia kompozytu maksymalnego NDVI o niższej rozdzielczości (250 m) na podstawie obrazów Sentinel-2 zwróconych przez poprzednie wyszukiwanie STAC-API.
+
+```{r 09-gdalcubes-example, eval=FALSE}
+library(gdalcubes)
+# Filter images by cloud cover and create an image collection object
+cloud_filter = function(x) {
+    x[["eo:cloud_cover"]] < 10
+}
+collection = stac_image_collection(items$features, 
+                                   property_filter = cloud_filter)
+# Define extent, resolution (250m, daily) and CRS of the target data cube
+v = cube_view(srs = "EPSG:3857", extent = collection, dx = 250, dy = 250,
+              dt = "P1D") # "P1D" is an ISO 8601 duration string
+# Create and process the data cube
+cube = raster_cube(collection, v) |>
+  select_bands(c("B04", "B08")) |>
+  apply_pixel("(B08-B04)/(B08+B04)", "NDVI") |>
+  reduce_time("max(NDVI)")
+# gdalcubes_options(parallel = 8)
+# plot(cube, zlim = c(0, 1))
+```
+
+Aby filtrować zdjęcia pod kątem zachmurzenia, udostępniamy funkcję filtrowania właściwości, która jest stosowana do każdegowyniku z serwisuSTAC\\index{STAC}podczas tworzenia zbioru zdjęć.
+Funkcja ta przyjmuje dostępne metadane zdjęcia jako listę wejściową i zwraca pojedynczą wartość logiczną, dzięki czemu brane są pod uwagę wyłącznie zdjęcia,dla których funkcja zwraca wartość TRUE.
+W tym przypadku pomijamy zdjęcia o zachmurzeniu wynoszącym 10% lub więcej.
+Więcej szczegółów można znaleźć w tym[samouczku zaprezentowanym podczas letniej szkoły OpenGeoHub 2021](https://appelmar.github.io/ogh2021/tutorial.html).^\[Innym narzędziem do pracy zdanymiSTAC\\index{STAC}w języku R jestpakiet**rsi**, który pozwala uzyskać dane przestrzenne z STAC dla danego czasu i lokalizacji.\]
+
+Połączenie STAC\\index{STAC}, COGs\\index{COG}oraz data cubes\\index{data cube}tworzy natywny dla chmury przepływ pracy służący do analizy (dużych) zbiorów obrazów satelitarnych w chmurze\\index{cloud computing}.
+Narzędzia te stanowią już podstawę, na przykład,pakietu**sits**\\index{sits (package)}, który umożliwia klasyfikację użytkowania gruntów i pokrycia terenu w dużych zbiorach danych z obserwacji Ziemi w języku R.
+Pakiet tworzy kostki danych EO na podstawie zbiorów obrazów dostępnych w usługach chmurowych i przeprowadza klasyfikację terenu w kostkach danych przy użyciu różnych algorytmów uczenia maszynowego i głębokiego.
+Aby uzyskać więcej informacji na temat**sits**, odwiedź stronę<https://e-sensing.github.io/sitsbook/> lub przeczytaj powiązany artykuł [@rs13132428] .
+
+### openEO
+
+OpenEO [@schramm_openeo_2021] \index{OpenEO}to inicjatywa mająca na celu wspieranie interoperacyjności między usługami w chmurze poprzez zdefiniowanie wspólnego języka przetwarzania danych.
+Pierwotna koncepcja została opisana w[poście na blogu](https://r-spatial.org/2016/11/29/openeo.html)[r-spatial.org](https://r-spatial.org/2016/11/29/openeo.html)i ma na celu umożliwienie użytkownikom łatwego przechodzenia między usługami w chmurze przy jak najmniejszych zmianach w kodzie.
+[Standaryzowane procesy](https://processes.openeo.org)wykorzystują wielowymiarowy model kostki danych\\index{data cube}jako interfejs do danych.
+Dostępne są implementacje dla ośmiu różnych backendów (patrz<https://hub.openeo.org>), z którymi użytkownicy mogą łączyć się za pomocą R, Python, JavaScript, QGIS lub edytor internetowy oraz definiować (i łączyć) procesy na zbiorach.
+Ponieważ funkcjonalność i dostępność danych różnią się w zależności od backendów, pakiet**openeo** R [@lahn_openeo_2021] dynamicznie ładuje dostępne procesy i zbiory z podłączonego backendu.
+Następnie użytkownicy mogą ładować zbiory obrazów, stosować i łączyć procesy, przesyłać zadania oraz przeglądać i wyświetlać wyniki.
+
+Poniższy kod połączy się z[platformą](https://openeo.cloud/)[openEO](https://openeo.cloud/), zażąda dostępnych zbiorów danych, procesów i formatów wyjściowych, zdefiniuje wykres procesu w celu obliczenia obrazu o maksymalnym wskaźniku NDVI na podstawie danych Sentinel-2, a na koniec wykona wykres po zalogowaniu się do platformy.
+PlatformaopenEO\\index{OpenEO}oferuje bezpłatny poziom dostępu, a rejestracja jest możliwa za pomocą istniejących kont instytucjonalnych lub kont platform internetowych.
+
+```{r 09-openeo-example, eval=FALSE}
+library(openeo)
+con = connect(host = "https://openeo.cloud")
+p = processes() # load available processes
+collections = list_collections() # load available collections
+formats = list_file_formats() # load available output formats
+# Load Sentinel-2 collection
+s2 = p$load_collection(id = "SENTINEL2_L2A",
+                       spatial_extent = list(west = 7.5, east = 8.5,
+                                             north = 51.1, south = 50.1),
+                       temporal_extent = list("2021-01-01", "2021-01-31"),
+                       bands = list("B04", "B08"))
+# Compute NDVI vegetation index
+compute_ndvi = p$reduce_dimension(data = s2, dimension = "bands",
+                                  reducer = function(data, context) {
+                                      (data[2] - data[1]) / (data[2] + data[1])
+                                  })
+# Compute maximum over time
+reduce_max = p$reduce_dimension(data = compute_ndvi, dimension = "t",
+                                reducer = function(x, y) {
+                                    max(x)
+                                })
+# Export as GeoTIFF
+result = p$save_result(reduce_max, formats$output$GTiff)
+# Login, see https://docs.openeo.cloud/getting-started/r/#authentication
+login(login_type = "oidc", provider = "egi", 
+      config = list(client_id = "...", secret = "..."))
+# Execute processes
+compute_result(graph = result, output_file = tempfile(fileext = ".tif"))
+```
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child("_10-ex.Rmd",
+  quiet = TRUE,
+  options = list(include = FALSE, eval = FALSE)
+)
+cat(res, sep = "\n")
+```
+
+

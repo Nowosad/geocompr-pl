@@ -485,7 +485,7 @@ The System for Automated Geoscientific Analyses (SAGA\index{SAGA}; Table \@ref(t
 In addition, there is a Python interface (SAGA Python API\index{API}).
 **Rsagacmd**\index{Rsagacmd (package)} uses the former to run SAGA\index{SAGA} from within R.
 
-We will use **Rsagacmd** in this section to delineate areas with similar values of the normalized difference vegetation index (NDVI) of the Mongón study area in Peru from September in the year 2000 (Figure \@ref(fig:sagasegments), left panel) by using a seeded region growing algorithm from SAGA\index{segmentation}.^[Read Section \@ref(local-operations) on details of how to calculate NDVI from a remote-sensing image.]
+We will use **Rsagacmd** in this section to delineate areas with similar values of the normalized difference vegetation index (NDVI) of the Mongón study area in Peru from September in the year 2000 (Figure \@ref(fig:sagasegments), left panel) by using a seeded region growing algorithm from SAGA\index{segmentation}.
 
 ```{r, eval=FALSE}
 ndvi = rast(system.file("raster/ndvi.tif", package = "spDataLarge"))
@@ -640,8 +640,9 @@ write_VECT(terra::vect(points[, 1]), vname = "points")
 ```
 
 The **rgrass** package expects its inputs and gives its outputs as **terra** objects. 
-Therefore, we need to convert our `sf` spatial vectors to **terra**'s `SpatVector`s using the `vect()` function to be able to use `write_VECT()`.^[You can learn more how to convert between spatial classes in R by reading the (Conversions between different spatial classes in R)[https://geocompx.org/post/2021/spatial-classes-conversion/] blog post and the 
-(Coercion between object formats)[https://CRAN.R-project.org/package=rgrass/vignettes/coerce.html] vignette.] 
+Therefore, we need to convert our `sf` spatial vectors to **terra**'s `SpatVector`s using the `vect()` function to be able to use `write_VECT()`.
+You can learn more how to convert between spatial classes in R by reading the (Conversions between different spatial classes in R)[https://geocompx.org/post/2021/spatial-classes-conversion/] blog post and the 
+(Coercion between object formats)[https://CRAN.R-project.org/package=rgrass/vignettes/coerce.html] vignette.
 
 Now, both datasets exist in the GRASS GIS database.
 To perform our network\index{network} analysis, we need a topologically clean street network\index{topology cleaning}.
@@ -796,30 +797,25 @@ TauDEM (https://hydrology.usu.edu/taudem/) and the Orfeo Toolbox (https://www.or
 This in turn could be the starting point for creating a proper interface to these libraries in the form of new R packages.
 
 Before diving into a project to create a new bridge, however, it is important to be aware of the power of existing R packages and that `system()` calls may not be platform-independent (they may fail on some computers).
-On the other hand, **sf** and **terra** brings most of the power provided by GDAL\index{GDAL}, GEOS\index{GEOS} and PROJ\index{PROJ} to R via the R/C++\index{C++} interface provided by **Rcpp**, which avoids `system()` calls.^[There are also **vapour** and **gdalraster** that provide low-level interfaces to GDAL\index{GDAL}.]
+On the other hand, **sf** and **terra** brings most of the power provided by GDAL\index{GDAL}, GEOS\index{GEOS} and PROJ\index{PROJ} to R via the R/C++\index{C++} interface provided by **Rcpp**, which avoids `system()` calls.
+There are also **vapour** and **gdalraster** that provide low-level interfaces to GDAL\index{GDAL}.
 
 ## Bridges to spatial databases {#postgis}
 
 \index{spatial database}
 Spatial database management systems (spatial DBMSs) store spatial and non-spatial data in a structured way.
-They can organize large collections of data into related tables (entities) via unique identifiers (primary and foreign keys) and implicitly via space (think for instance of a spatial join). 
+They can organize large collections of data into related tables (entities) via unique identifiers (primary and foreign keys) and implicitly via space (think for instance of a spatial join).
 This is useful because geographic datasets tend to become big and messy quite quickly.
 Databases enable storing and querying large datasets efficiently based on spatial and non-spatial fields, and provide multi-user access and topology\index{topological relations} support.
 
-The most important open source spatial database\index{spatial database} is PostGIS\index{PostGIS} [@obe_postgis_2015].^[
-SQLite/SpatiaLite are certainly also important, but implicitly we have already introduced this approach since GRASS GIS\index{GRASS GIS} is using SQLite in the background (see Section \@ref(grass)).
-]
+The most important open source spatial database\index{spatial database} is PostGIS\index{PostGIS} [@obe_postgis_2015].
 R bridges to spatial DBMSs such as PostGIS\index{PostGIS} are important, allowing access to huge data stores without loading several gigabytes of geographic data into RAM, and likely crashing the R session.
-The remainder of this section shows how PostGIS can be called from R, based on "Hello real-world" from *PostGIS in Action, Second Edition* [@obe_postgis_2015].^[
-Thanks to Manning Publications, Regina Obe and Leo Hsu for permission to use this example.
-]
+The remainder of this section shows how PostGIS can be called from R, based on "Hello real-world" from *PostGIS in Action, Second Edition* [@obe_postgis_2015] -- thanks to Manning Publications, Regina Obe and Leo Hsu for permission to use this example.
 
-The subsequent code requires a working internet connection, since we are accessing a PostgreSQL/PostGIS\index{PostGIS} database which is living in the QGIS Cloud (https://qgiscloud.com/).^[
-QGIS\index{QGIS} Cloud lets you store geographic data and maps in the cloud. 
+The subsequent code requires a working internet connection, since we are accessing a PostgreSQL/PostGIS\index{PostGIS} database which is living in the QGIS Cloud (https://qgiscloud.com/).^[Cloud lets you store geographic data and maps in the cloud.
 In the background, it uses QGIS Server and PostgreSQL/PostGIS.
 This way, the reader can follow the PostGIS example without the need to have PostgreSQL/PostGIS installed on a local machine.
-Thanks to the QGIS Cloud team for hosting this example.
-]
+Thanks to the QGIS Cloud team for hosting this example.]
 Our first step here is to create a connection to a database by providing its name, host name, and user information.
 
 ```{r 09-gis-37, eval=FALSE}

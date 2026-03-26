@@ -13,11 +13,11 @@ library(osmdata)
 library(spDataLarge)
 ```
 
-E1. This exercise requires the **z22** package for accessing 100 m resolution data.
-Install it with `remotes::install_github("JsLth/z22")`.
-Load the population data at 100 m cell resolution using `z22::z22_data("population", res = "100m", year = 2022)`.
-Aggregate it to a cell resolution of 1 km using `terra::aggregate()` with `fun = sum`, and compare the result with the 1 km resolution data from `census_de`.
-Note that the 100 m data is much larger and may take some time to download.
+E1. To ćwiczenie wymagapakietu**z22**, umożliwiającego dostęp do danych o rozdzielczości 100 m.
+Zainstaluj go za pomocą polecenia \``remotes::install_github("JsLth/z22")`\`.
+Załaduj dane dotyczące ludności o rozdzielczości komórek 100 m,korzystając z adresu`z22::z22_data("population", res = "100m", year = 2022)`.
+Zagreguj je do rozdzielczości komórek 1 km,korzystając z adresu`terra::aggregate()`oraz opcji \``fun = sum`\`, a następnie porównaj wynik z danymi o rozdzielczości 1 km dostępnymi pod adresem`census_de`.
+Należy pamiętać, że plik danych o rozdzielczości 100 m jest znacznie większy i jego pobranie może zająć trochę czasu.
 
 ```{r 14-ex-e1, eval=FALSE}
 # Coarse inhabitant raster (1 km resolution)
@@ -53,8 +53,8 @@ plot(inh_fine_agg - inh_coarse)
 terra::global((abs(inh_fine_agg - inh_coarse) > 100), fun = "sum", na.rm = TRUE)
 ```
 
-E2. Suppose our bike shop predominantly sold electric bikes to older people.
-Change the age raster accordingly, repeat the remaining analyses and compare the changes with our original result.
+E2. Załóżmy, że nasz sklep rowerowy sprzedawał głównie rowery elektryczne osobom starszym.
+Zmień odpowiednio raster wieku, powtórz pozostałe analizy i porównaj zmiany z naszym pierwotnym wynikiem.
 
 ```{r 14-ex-e2, eval=FALSE}
 # Load data from spDataLarge
@@ -166,3 +166,5 @@ leaflet::leaflet() |>
   leaflet::addLegend("bottomright", colors = c("darkgreen"),
                      labels = c("potential locations"), title = "Legend")
 ```
+
+
