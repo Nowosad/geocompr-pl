@@ -1,0 +1,700 @@
+# Uczenie statystyczne{#spatial-cv}
+
+```{r, include=FALSE}
+source("code/before_script.R")
+```
+
+## 
+
+```{r 12-knitr-settings, include=FALSE}
+knitr::opts_chunk$set(cache = FALSE)
+```
+
+## Wymagania wstępne{-}
+
+W niniejszym rozdziale zakłada się biegłą znajomość analizy danych geograficznych\\index{geographic data analysis}, na przykład zdobytą poprzez zapoznanie się z treścią i wykonanie ćwiczeń zawartych w rozdziałach od @ref(spatial-class) do @ref(reproj-geo-data). Zdecydowanie
+ zaleca sięzapoznanie się z uogólnionymi modelami liniowymi (GLM)\\index{GLM}oraz uczeniem maszynowym\\index{machine learning} [, na przykład @zuur_mixed_2009 i @james_introduction_2013] .
+
+W rozdziale wykorzystano następujące pakiety:^\[Należy
+również zainstalowaćpakiety**GGally**,**lgr**,**kernlab**,**mlr3measures**,**paradox**,**pROC**,**progressr**i**spDataLarge**, chociaż nie muszą one być dołączone.
+\]
+
+```{r 12-spatial-cv-1, message=FALSE}
+library(sf)
+library(terra)
+library(dplyr)
+library(future)             # parallel processing
+library(lgr)                # logging framework for R
+library(mlr3)               # unified interface to machine learning algorithms
+library(mlr3learners)       # most important machine learning algorithms
+library(mlr3extralearners)  # access to even more learning algorithms
+library(mlr3proba)          # here needed for mlr3extralearners::list_learners()
+library(mlr3spatiotempcv)   # spatiotemporal resampling strategies
+library(mlr3tuning)         # hyperparameter tuning
+library(mlr3viz)            # plotting functions for mlr3 objects
+library(progressr)          # report progress updates
+library(pROC)               # compute roc values
+```
+
+Wymagane dane zostaną dołączone w odpowiednim czasie.
+
+## Wprowadzenie{#intro-cv1}
+
+Uczenie
+
+## 
+
+statystyczne\\index{statistical learning}dotyczy wykorzystania modeli statystycznych i obliczeniowych do identyfikacji wzorców w danych i prognozowania na podstawie tych wzorców.
+Ze względu na swoje pochodzenie, uczenie statystyczne\\index{statistical learning}jest jedną znajwiększych zaletjęzyka R\\index{R}(patrz sekcja @ref(software-for-geocomputation)).^\[
+ Stosowanie technik statystycznych do danych geograficznych jest od wielu dziesięcioleci aktywnym tematem badań w dziedzinach geostatystyki, statystyki przestrzennej i analizy wzorców punktowych [@diggle_modelbased_2007; @gelfand_handbook_2010; @baddeley_spatial_2015] .
+\]Uczenie
+statystyczne\\index{statistical learning}łączy metody statystyki\\index{statistics}i uczenia maszynowego\\index{machine learning}i można je podzielić na techniki nadzorowane i nienadzorowane.
+ Obie są coraz częściej stosowane w dyscyplinach od fizyki, biologii i ekologii po geografię i ekonomię [@james_introduction_2013] .
+
+W niniejszym rozdziale skupiono się na technikach nadzorowanych, w których wykorzystuje się zbiór danych szkoleniowych, w odróżnieniu od technik nienadzorowanych, takich jak klasteryzacja\\index{clustering}.
+Zmienne odpowiedzi mogą mieć charakter binarny (np. występowanie osuwisk), kategorialny (zagospodarowanie terenu), całkowitoliczbowy (liczba gatunków) lub numeryczny (kwasowość gleby mierzona w pH).
+Techniki nadzorowane modelują relacje między takimi odpowiedziami — które są znane dla próby obserwacji — a jednym lub kilkoma predyktorami.
+
+Głównym celem wielubadańz zakresu uczenia maszynowego\\index{machine learning}jest tworzenie trafnych prognoz.Uczenie
+maszynowe rozwija się w erze „big data”\\index{big data}, ponieważ jego metody opierają się na niewielkiej liczbie założeń dotyczących zmiennych wejściowych i pozwalają na obsługę ogromnych zbiorów danych.
+Uczenie maszynowe sprzyja zadaniom takim jak przewidywanie przyszłych zachowań klientów, usługi rekomendacyjne (muzyka, filmy, co kupić dalej), rozpoznawanie twarzy, jazda autonomiczna, klasyfikacja tekstu i konserwacja predykcyjna (infrastruktura, przemysł).
+
+Rozdział ten opiera się na studium przypadku: modelowaniu występowania osuwisk.Zastosowanie
+to nawiązuje do praktycznego charakteru geokomputacji, zdefiniowanego w rozdziale @ref(intro), i ilustruje, w jaki sposób uczenie maszynowe\\index{machine learning}czerpie z dziedziny statystyki\\index{statistics}, gdy jedynym celem jest prognozowanie.
+Dlatego w rozdziale tym najpierw przedstawionokoncepcjemodelowania i walidacji krzyżowej\\index{cross-validation}przy pomocy modelu GLM \\index{GLM} [@zuur_mixed_2009] .
+Opierając się na tym, w rozdziale tym wdrażany jest bardziej typowyalgorytmuczenia maszynowego\\index{machine learning}, a mianowicie Support Vector Machine (SVM)\\index{SVM}.
+**Wydajność prognostyczna**modelizostanie oceniona przy użyciu walidacji krzyżowej przestrzennej (CV)\\index{cross-validation!spatial CV}, która uwzględnia fakt, że dane geograficzne mają specyficzny charakter.
+
+CV\\index{cross-validation}określa zdolność modelu do uogólniania na nowe dane poprzez (wielokrotne) dzielenie zbioru danych na zestawy szkoleniowe i testowe.
+Wykorzystuje dane szkoleniowe do dopasowania modelu i sprawdza jego wydajność podczas prognozowania na danych testowych.
+CV pomaga wykryć nadmierne dopasowanie\\index{overfitting}, ponieważ modele, które zbyt dokładnie przewidują dane szkoleniowe (szum), będą miały tendencję do słabych wyników na danych testowych.
+
+Losowy podział danych przestrzennych może prowadzić do punktów szkoleniowych, które są sąsiadami w przestrzeni z punktami testowymi.
+Ze względu na autokorelację przestrzenną\\index{autocorrelation!spatial}, zbiory danych testowych i szkoleniowych nie byłyby w tym scenariuszu niezależne, co spowodowałoby, że CV\\index{cross-validation}nie wykryłoby ewentualnego nadmiernego dopasowania\\index{overfitting}.
+Przestrzenne CV\\index{cross-validation!spatial CV}łagodzi ten problem i jest**głównym**tematem niniejszego rozdziału.
+
+Dlatego też, i aby to jeszcze raz podkreślić, niniejszy rozdział skupia się na**wydajności****prognostycznej**modeli.**Nie**
+uczyon**,**jak tworzyć mapy prognostyczne.Będzie
+to tematem rozdziału @ref(eco).
+
+## Studium przypadku: podatność na osuwiska{#case-landslide}
+
+Niniejsze studium przypadku opiera się na zbiorze danych dotyczących lokalizacji osuwisk w południowym Ekwadorze, przedstawionych na rysunku @ref(fig:lsl-map) i szczegółowo opisanych w @muenchow\_geomorphic\_2012.
+Podzbiór zbioru danych wykorzystanego w tej publikacji znajduje się wpakiecie**spDataLarge**\\index{spDataLarge (package)}, który można załadować w następujący sposób:
+
+```{r 12-spatial-cv-2}
+data("lsl", "study_mask", package = "spDataLarge")
+ta = terra::rast(system.file("raster/ta.tif", package = "spDataLarge"))
+```
+
+Powyższy kod ładuje trzy obiekty:`data.frame`o nazwie`lsl`,obiekt`sf`o nazwie`study_mask`oraz`SpatRaster`(patrz sekcja @ref(raster-classes)) o nazwie`ta`zawierający rastrowe atrybuty terenu.
+`lsl`zawiera kolumnę czynnika`lslpts`,gdzie`TRUE`odpowiada obserwowanemu „punktowi początkowemu” osuwiska, a współrzędne są zapisane w kolumnach`x`i`y`.^\[
+Punkt początkowy osuwiska znajduje się na skarpie wielokąta osuwiska. Więcej szczegółów można znaleźć w @muenchow\_geomorphic\_2012.
+\]
+Istnieje 175 punktów osuwiskowych i 175 punktów nieosuwiskowych, jak pokazano na`summary(lsl$lslpts)`.
+175 punktów nieosuwiskowych zostało wybranych losowo z obszaru badań, z zastrzeżeniem, że muszą one znajdować się poza niewielką strefą buforową wokół wielokątów osuwiskowych.
+
+```{r lsl-map, echo=FALSE, out.width="70%", fig.cap="Landslide initiation points (red) and points unaffected by landsliding (blue) in Southern Ecuador.", fig.scap="Landslide initiation points."}
+# library(tmap)
+# data("lsl", package = "spDataLarge")
+# ta = terra::rast(system.file("raster/ta.tif", package = "spDataLarge"))
+# lsl_sf = sf::st_as_sf(lsl, coords = c("x", "y"), crs = "EPSG:32717")
+# hs = terra::shade(slope = ta$slope * pi / 180,
+#                   terra::terrain(ta$elev, v = "aspect", unit = "radians"))
+# # so far tmaptools does not support terra objects
+# bbx = tmaptools::bb(raster::raster(hs), xlim = c(-0.0001, 1),
+#                     ylim = c(-0.0001, 1), relative = TRUE)
+# map = tm_shape(hs, bbox = bbx) +
+#   tm_grid(col = "black", n.x = 1, n.y = 1, labels.inside.frame = FALSE,
+#           labels.rot = c(0, 90), lines = FALSE) +
+#   tm_raster(col.scale = tm_scale(values = gray(0:100 / 100), n = 100), col.legend = tm_legend_hide()) +
+#   tm_shape(ta$elev) +
+#   tm_raster(col_alpha = 0.6, col.scale = tm_scale(values = hcl.colors(25, "Geyser")), col.legend = tm_legend_hide()) +
+#   tm_shape(lsl_sf) +
+#   tm_symbols(fill = "lslpts", size = 0.5, col = "white",
+#              fill.scale = tm_scale(values = c("#0071A6", "#C73000")), fill.legend = tm_legend(title = "Landslide: ")) +
+#   tm_layout(inner.margins = rep(0, 4), legend.bg.color = "white", legend.position = tm_pos_in())
+# tmap::tmap_save(map, filename = "images/lsl-map-1.png", width = 11,
+#               height = 11, units = "cm")
+knitr::include_graphics("images/lsl-map-1.png")
+```
+
+\\index{hillshade}
+
+Pierwsze trzy wiersze pliku`lsl`, zaokrąglone do dwóch cyfr znaczących, można znaleźć w tabeli @ref(tab:lslsummary).
+
+```{r lslsummary, echo=FALSE, warning=FALSE}
+lsl_table = lsl |>
+  mutate(across(.cols = -any_of(c("x", "y", "lslpts")), ~signif(., 2)))
+knitr::kable(lsl_table[c(1, 2, 350), ], caption = "Structure of the lsl dataset.",
+             caption.short = "`lsl` dataset.", booktabs = TRUE) |>
+  kableExtra::kable_styling(latex_options = "scale_down")
+```
+
+Aby modelować podatność na osuwiska, potrzebujemy pewnych zmiennych prognostycznych.
+ Ponieważ cechy terenu są często powiązane z osuwiskami [@muenchow_geomorphic_2012] , wyodrębniliśmy już następujące cechy terenu z`ta`do`lsl`:
+
+- `slope`: kąt nachylenia (°)
+- `cplan`: krzywizna płaszczyzny (rad m^−1^) wyrażająca zbieżność lub rozbieżność zbocza, a tym samym przepływ wody
+- `cprof`: krzywizna profilu (rad m^-1^) jako miara przyspieszenia przepływu, znana również jako zmiana kąta nachylenia w dół zbocza
+- `elev`: wysokość (m n.p.m.) jako reprezentacja różnych stref wysokościowych roślinności i opadów na badanym obszarze
+- `log10_carea`: logarytm dziesiętny powierzchni zlewni (log10 m^2^) reprezentujący ilość wody płynącej w kierunku danej lokalizacji
+
+Warto obliczyć atrybuty terenu przy pomocy mostków R-GIS (patrz rozdział @ref(gis)) i wyodrębnić je do punktów osuwisk (patrz sekcja Ćwiczenia na końcu tego rozdziału).
+
+## Konwencjonalne podejście do modelowania w R{#conventional-model}
+
+Przed wprowadzeniempakietu**mlr3**\\index
+
+## 
+
+{mlr3 (package)}, pakietu nadrzędnego zapewniającego ujednolicony interfejs do dziesiątek algorytmów uczenia (sekcja @ref(spatial-cv-with-mlr3)), warto przyjrzeć się konwencjonalnemu interfejsowi modelowania w R\\index{R}.
+To wprowadzenie do uczenia statystycznego z nadzorem\\index{statistical learning}stanowi podstawę do przeprowadzania przestrzennego uczenia maszynowego\\index{cross-validation!spatial CV}i pomaga lepiej zrozumiećpodejście**mlr3**\\index{mlr3 (package)}przedstawione w dalszej części.
+
+Uczenie z nadzorem polega na przewidywaniu zmiennej odpowiedzi jako funkcji zmiennych prognostycznych (sekcja @ref(intro-cv)).
+W języku R\\index{R}funkcje modelowania są zazwyczaj określane za pomocą formuł (więcej szczegółów na temat formuł w języku Rmożna znaleźć na stronie`?formula`).
+Poniższe polecenie określa i uruchamia uogólniony model liniowy\\index{GLM}:
+
+```{r 12-spatial-cv-6}
+fit = glm(lslpts ~ slope + cplan + cprof + elev + log10_carea,
+          family = binomial(),
+          data = lsl)
+```
+
+Warto zapoznać się z każdym z trzech argumentów wejściowych:
+
+- Formuła określająca występowanie osuwisk (`lslpts`) jako funkcję zmiennych prognostycznych
+- Rodzina modeli określająca typ modelu; w tym przypadkujestto`binomial`,ponieważ zmienna zależna ma charakter binarny (zobacz`?family`)
+- Ramka danych zawierająca zmienną zależną oraz zmienne prognostyczne (jako kolumny)
+
+Wyniki tego modelu można wyświetlić w następujący sposób (bardziej szczegółowy opis wyników znajduje się na stronie`summary(fit)`):
+
+```{r 12-spatial-cv-7}
+class(fit)
+fit
+```
+
+Obiekt modelu`fit`, klasy`glm`, zawiera współczynniki definiujące dopasowaną zależność między odpowiedzią a predyktorami.
+Można go również wykorzystać do prognozowania.Odbywa
+się to za pomocą ogólnejmetody`predict()`, która w tym przypadku wywołuje funkcję`predict.glm()`.
+Ustawienie`type`na`response`zwraca prognozowane prawdopodobieństwa (wystąpienia osuwiska) dla każdej obserwacji w`lsl`, jak pokazano poniżej (zobacz`?predict.glm`).
+
+```{r 12-spatial-cv-8}
+pred_glm = predict(object = fit, type = "response")
+head(pred_glm)
+```
+
+Mapy rozkładu przestrzennego można utworzyć, stosując współczynniki do rastrów predyktorów.
+Można to zrobić ręcznie lub za pomocą funkcji`terra::predict()`.
+Oprócz obiektu modelu (`fit`) ta ostatnia funkcja oczekuje również tablicy`SpatRaster`z predyktorami (warstwami rastrowymi) nazwanymi tak samo jak w ramce danych wejściowych modelu (rysunek @ref(fig:lsl-susc)).
+
+```{r 12-spatial-cv-9, eval=FALSE}
+# making the prediction
+pred = terra::predict(ta, model = fit, type = "response")
+```
+
+```{r lsl-susc, echo=FALSE, out.width="70%", fig.cap="Spatial distribution mapping of landslide susceptibility using a GLM.", fig.scap="Spatial distribution of landslide susceptibility.", warning=FALSE}
+# attach study mask for the natural part of the study area
+# data("lsl", "study_mask", package = "spDataLarge")
+# ta = terra::rast(system.file("raster/ta.tif", package = "spDataLarge"))
+# study_mask = terra::vect(study_mask)
+# lsl_sf = sf::st_as_sf(lsl, coords = c("x", "y"), crs = 32717)
+# hs = terra::shade(ta$slope * pi / 180,
+#                   terra::terrain(ta$elev, v = "aspect", unit = "radians"))
+# bbx = tmaptools::bb(raster::raster(hs), xlim = c(-0.0001, 1),
+#                     ylim = c(-0.0001, 1), relative = TRUE)
+# map2 = tm_shape(hs, bbox = bbx) +
+#   tm_grid(col = "black", n.x = 1, n.y = 1, labels.inside.frame = FALSE,
+#           labels.rot = c(0, 90), lines = FALSE) +
+#   tm_raster(col.scale = tm_scale(values = "white"), col.legend = tm_legend_hide()) +
+#   tm_shape(terra::mask(hs, study_mask), bbox = bbx) +
+# 	tm_raster(col.scale = tm_scale(values = gray(0:100 / 100), n = 100), col.legend = tm_legend_hide()) +
+#   tm_shape(terra::mask(pred, study_mask)) +
+# 	tm_raster(col_alpha = 0.5, col.scale = tm_scale(values = "Reds", n = 6),
+# 	          col.legend = tm_legend(title = "Susceptibility")) +
+# 	tm_layout(legend.position = c("LEFT", "BOTTOM"),
+# 	          legend.title.size = 0.8,
+# 	          inner.margins = rep(0, 4))
+# tmap::tmap_save(map2, filename = "images/lsl-susc-1.png", width = 13,
+#               height = 11, units = "cm")
+knitr::include_graphics("images/lsl-susc-1.png")
+```
+
+W tym przypadku, dokonując prognoz, pomijamy autokorelację przestrzenną\\index{autocorrelation!spatial}, ponieważ zakładamy, że średnio dokładność prognoz pozostaje taka sama niezależnie od tego, czy uwzględniono struktury autokorelacji przestrzennej,czy też nie.Możliwe
+jest jednak uwzględnieniestrukturautokorelacji przestrzennej\\index{autocorrelation!spatial}zarówno w modelach,jak i w prognozach.
+Chociaż wykracza to poza zakres niniejszej książki, zainteresowanym czytelnikom podajemy kilka wskazówek, gdzie mogą znaleźć więcej informacji na ten temat:
+
+1. Prognozy krigingu regresyjnego łączą prognozy regresji z krigingiem reszt regresji [@goovaerts_geostatistics_1997; @hengl_practical_2007; @bivand_applied_2013] .
+2. Można również dodać strukturę korelacji przestrzennej (zależności) do modelu uogólnionych najmniejszych kwadratów \[`nlme::gls()`, @zuur\_mixed\_2009; @zuur\_beginners\_2017\].
+3. Można również zastosować podejścia modelowania z efektami mieszanymi.
+    Zasadniczo efekt losowy nakłada strukturę zależności na zmienną odpowiedzi, co z kolei pozwala, aby obserwacje jednej klasy były bardziej podobne do siebie niż do obserwacji innej klasy [@zuur_mixed_2009] .
+   Klasami mogą być na przykład ule pszczele, gniazda sów, transekty roślinności lub stratyfikacja wysokościowa.
+   To podejście oparte na modelowaniu mieszanym zakłada normalny i niezależny rozkład losowych punktów przecięcia.
+   Można to nawet rozszerzyć, stosując losowy punkt przecięcia, który jest normalny i zależny przestrzennie.
+    W tym celu najprawdopodobniej trzeba będzie jednak skorzystać z podejść modelowania bayesowskiego, ponieważ narzędzia oprogramowania frequentystycznego są pod tym względem raczej ograniczone, zwłaszcza w przypadku bardziej złożonych modeli [@blangiardo_spatial_2015; @zuur_beginners_2017] .
+
+Mapowanie rozkładu przestrzennego jest jednym z bardzo ważnych wyników modelu (rysunek @ref(fig:lsl-susc)).
+Jeszcze ważniejsze jest to, jak dobrze model leżący u podstaw radzi sobie z ich tworzeniem, ponieważ mapa prognoz jest bezużyteczna, jeśli wydajność prognostyczna modelu jest słaba.
+Jedną z najpopularniejszych miar służących do oceny wydajności predykcyjnej modelu dwumianowego jest obszar pod krzywą ROC (AUROC)\\index{AUROC}.Jest
+to wartość z przedziału od 0,5 do 1,0, gdzie 0,5 oznacza model nie lepszy od losowego, a 1,0 oznacza idealną prognozę dla obu klas.
+Zatem im wyższy wskaźnik AUROC\\index{AUROC}, tym lepsza jest zdolność predykcyjna modelu.
+Poniższy fragment kodu obliczawartośćAUROC\\index{AUROC}modelu przy użyciu`roc()`, który przyjmuje jako dane wejściowe wartości odpowiedzi i wartości przewidywane.
+`auc()`zwraca pole pod krzywą.
+
+```{r 12-spatial-cv-10, message=FALSE, eval=FALSE}
+pROC::auc(pROC::roc(lsl$lslpts, fitted(fit)))
+#> Area under the curve: 0.8216
+```
+
+WartośćAUROC\\index{AUROC}wynosząca 0,82 oznacza dobre dopasowanie.
+Jest to jednak zbyt optymistyczne oszacowanie, ponieważ obliczyliśmy je na całym zbiorze danych.
+Aby uzyskać ocenę o zmniejszonym błędzie systematycznym, musimy zastosować walidację krzyżową\\index{cross-validation}, a w przypadku danych przestrzennych powinniśmy skorzystać z walidacji krzyżowej przestrzennej\\index{cross-validation!spatial CV}.
+
+## Wprowadzenie do (przestrzennej) walidacji krzyżowej{#intro-cv}
+
+Walidacja krzyżowa\\index{cross-validation}należy do rodziny metod ponownego próbkowania\\index{resampling} [@james_introduction_2013] .
+Podstawową ideą jest (wielokrotne) dzielenie zbioru danych na zestawy szkoleniowe i testowe, przy czym dane szkoleniowe są wykorzystywane do dopasowania modelu, który następnie jest stosowany do zestawu testowego.
+Porównanie wartości przewidywanych z znanymi wartościami odpowiedzi z zestawu testowego (przy użyciu miary wydajności, takiej jak AUROC\\index{AUROC}w przypadku rozkładu dwumianowego) daje ocenę o zmniejszonym odchyleniu zdolności modelu do uogólnienia wyuczonej zależności na niezależne dane.
+Na przykład 100-krotna 5-krotna walidacja krzyżowa oznacza losowy podział danych na pięć partycji (foldów), przy czym każdy fold jest wykorzystywany raz jako zbiór testowy (patrz górny rząd rysunku @ref(fig:partitioning)).
+Gwarantuje to, że każda obserwacja jest wykorzystywana raz w jednym ze zbiorów testowych i wymaga dopasowania pięciu modeli.
+Następnie procedura ta jest powtarzana 100 razy.
+Oczywiście podział danych będzie się różnił przy każdym powtórzeniu.
+Ogółem daje to 500 modeli, przy czym średnia miara wydajności (AUROC\\index{AUROC}) wszystkich modeli stanowi ogólną zdolność predykcyjną modelu.
+
+Dane geograficzne mają jednak specyficzny charakter.
+ Jak zobaczymy w rozdziale @ref(transport), „pierwsze prawo” geografii głosi, że punkty położone blisko siebie są zazwyczaj bardziej podobne niż punkty oddalone [@miller_tobler_2004] .Oznacza
+to, że punkty te nie są statystycznie niezależne ,ponieważ punkty szkoleniowe i testowe w konwencjonalnej kontroli zmienności (CV){cross-validation}są często zbyt blisko siebie (patrz pierwszy wiersz rysunku @ref(fig:partitioning)).
+Obserwacje „szkoleniowe” znajdujące się w pobliżu obserwacji „testowych” mogą stanowić swego rodzaju „zapowiedź”:
+informacje, które nie powinny być dostępne dla zbioru danych szkoleniowych.
+Aby złagodzić ten problem, stosuje się „podział przestrzenny” w celu rozdzielenia obserwacji na podzbiory niepokrywające się przestrzennie (wykorzystując współrzędne obserwacji wklasteryzacjimetodą*k*\-średnich\\index{clustering!kmeans}; @brenning\_spatial\_2012; drugi rząd rysunku @ref(fig:partitioning)).
+Ta strategia partycjonowania jest**jedyną**różnicą między przestrzennym a konwencjonalnym CV.
+W rezultacie przestrzenne CV prowadzi do oceny wydajności predykcyjnej modelu o zmniejszonym odchyleniu, a tym samym pomaga uniknąć nadmiernego dopasowania\\index{overfitting}.
+
+```{r partitioning, fig.cap="Spatial visualization of selected test and training observations for cross-validation of one repetition. Random (upper row) and spatial partitioning (lower row).", echo=FALSE, fig.scap="Spatial visualization of selected test and training observations."}
+knitr::include_graphics("images/12_partitioning.png")
+```
+
+## Przestrzenne CV z**mlr3**
+
+\\index{mlr3 (package)}
+Istnieją dziesiątki pakietów do uczenia statystycznego\\index{statistical learning}, jak opisano na przykład w sekcji[poświęconej uczeniu maszynowemu w](https://CRAN.R-project.org/view=MachineLearning)[serwisie CRAN](https://CRAN.R-project.org/view=MachineLearning).
+Zapoznanie się z każdym z tych pakietów, w tym z metodami przeprowadzania walidacji krzyżowej idostrajaniahiperparametrów\\index{hyperparameter}, może być procesem czasochłonnym.
+Porównywanie wyników modeli uzyskanych przy użyciu różnych pakietów może być jeszcze bardziej pracochłonne.
+Pakiet**mlr3**i ekosystem zostały opracowane w celu rozwiązania tych problemów.Działa
+on jako „meta-pakiet”, zapewniając ujednolicony interfejs do popularnych technik uczenia statystycznego nadzorowanego i nienadzorowanego, w tym klasyfikacji, regresji\\index{regression}, analizy przeżywalności i klasteryzacji\\index{clustering} [@lang_mlr3_2019; @bischl_applied_2024] .
+Standaryzowanyinterfejs**mlr3**opiera się na ośmiu „elementach składowych”.
+Jak pokazano na rysunku @ref(fig:building-blocks), mają one jasną kolejność.
+
+(ref:building-blocks) Podstawowe elementy składowe pakietu mlr3. Uprzejmie udzielono zgody na ponowne wykorzystanie tego rysunku.
+
+```{r building-blocks, echo=FALSE, fig.height=4, fig.width=4, fig.cap="(ref:building-blocks)", fig.scap="Basic building blocks of the mlr3 package."}
+knitr::include_graphics("images/12_ml_abstraction_crop.png")
+```
+
+Proces modelowania**w****mlr3**składa się z trzech głównych etapów.
+Po pierwsze,**zadanie**określa dane (w tym zmienne odpowiedzi i predyktory) oraz typ modelu (taki jak regresja\\index{regression}lub klasyfikacja\\index{classification}).
+Po drugie,**uczeń**definiuje konkretny algorytm uczenia, który jest stosowany do utworzonego zadania.
+Po trzecie,podejście**oparte****na ponownym próbkowaniu**ocenia wydajność predykcyjną modelu, tj. jego zdolność do uogólniania na nowe dane (zobacz również sekcję @ref(intro-cv)).
+
+### Uogólniony model liniowy{#glm}
+
+Aby użyć GLM\\index{GLM}w**mlr3**\\index{mlr3 (package)}, musimy utworzyć**zadanie**zawierające dane dotyczące osuwisk.
+Ponieważ odpowiedź jest binarna (zmienna dwukategorialna) i ma wymiar przestrzenny, tworzymyzadanieklasyfikacyjne\\index{classification}z wykorzystaniem`as_task_classif_st()`zpakietu**mlr3spatiotempcv**\[@schratz\_mlr3spatiotempcv\_2021; w przypadku zadań nieprzestrzennych należy użyć`mlr3::as_task_classif()`lub`mlr3::as_task_regr()`dlazadańregresji\\index{regression};inne typy zadańmożna znaleźćna stronie`?Task`\].
+Pierwszym niezbędnym argumentem tychfunkcji`as_task_`jest`x`.
+`x`oczekuje, że dane wejściowe zawierają zmienne odpowiedzi i predyktory.
+Argument`target`wskazuje nazwę zmiennej odpowiedzi (w naszym przypadku jest to`lslpts`), a`positive`określa, który z dwóch poziomów czynnika zmiennej odpowiedzi wskazuje punkt początkowy osuwiska (w naszym przypadku jest to`TRUE`).
+Wszystkie pozostałe zmienne zzestawu danych`lsl`będą służyć jako predyktory.
+W przypadku CV przestrzennego musimy podać kilka dodatkowych argumentów.
+Argument`coordinate_names`oczekuje nazw kolumn współrzędnych (patrz sekcja @ref(intro-cv) i rysunek @ref(fig:partitioning)).
+Dodatkowo powinniśmy wskazać używany układ odniesienia (`crs`) oraz zdecydować,czy chcemy używać współrzędnych jako predyktorów w modelowaniu (`coords_as_features`).
+
+```{r 12-spatial-cv-11, eval=TRUE}
+# 1. create task
+task = mlr3spatiotempcv::as_task_classif_st(
+  mlr3::as_data_backend(lsl),
+  target = "lslpts",
+  id = "ecuador_lsl",
+  positive = "TRUE",
+  coordinate_names = c("x", "y"),
+  crs = "EPSG:32717",
+  coords_as_features = FALSE
+  )
+```
+
+Należy zauważyć,że`mlr3spatiotempcv::as_task_classif_st()`akceptuje równieżobiekt`sf`jako dane wejściowe dlaparametru`backend`.
+W tym przypadku może wystarczyć jedynie dodatkowe określenieargumentu`coords_as_features`.
+Nie przekształciliśmy`lsl`wobiekt`sf`
+
+,
+
+ponieważ`as_task_classif_st()`po prostu przekształciłby gow tlez powrotem wobiektnieprzestrzenny`data.table`.
+
+Do krótkiej eksploracji danychprzydatna może byćfunkcja`autoplot()`zpakietu**mlr3viz**,ponieważ wykreśla ona odpowiedź względem wszystkich predyktorów oraz wszystkie predyktory względem wszystkich predyktorów (nie pokazano).
+
+```{r autoplot, eval=FALSE}
+# plot response against each predictor
+mlr3viz::autoplot(task, type = "duo")
+# plot all variables against each other
+mlr3viz::autoplot(task, type = "pairs")
+```
+
+Po utworzeniu zadania musimy wybrać**algorytm**,który określa, jakąmetodęuczenia statystycznego{statistical learning}należy zastosować.
+Wszystkie**algorytmy**klasyfikacyjne{classification}rozpoczynają się od`classif.`,a wszystkiealgorytmyregresyjne{regression}od`regr.`(szczegółymożna znaleźćna stronie`?Learner`
+).W pliku`mlr3extralearners::list_mlr3learners()`, który wymagazainstalowania**pakietu mlr3proba**, wymieniono wszystkie dostępne algorytmy oraz pakiety, z którychimportuje je**mlr3**(tabela @ref(tab:lrns)).
+Aby dowiedzieć się, które modele są w stanie modelować zmienną odpowiedzi binarną, możemy uruchomić:
+
+```{r 12-spatial-cv-12, eval=FALSE}
+install.packages("mlr3proba", repos = "https://mlr-org.r-universe.dev")
+mlr3extralearners::list_mlr3learners(
+  filter = list(class = "classif", properties = "twoclass"),
+  select = c("id", "mlr3_package", "required_packages")
+) |>
+  head()
+```
+
+```{r lrns, echo=FALSE}
+# lrns_df = mlr3extralearners::list_mlr3learners(
+#   filter = list(class = "classif", properties = "twoclass"),
+#   select = c("id", "mlr3_package", "required_packages")) |>
+#   head()
+# dput(lrns_df)
+lrns_df = structure(list(Class = c("classif.adaboostm1", "classif.binomial",
+"classif.featureless", "classif.fnn", "classif.gausspr", "classif.IBk"
+), Name = c("ada Boosting M1", "Binomial Regression", "Featureless classifier",
+"Fast k-Nearest Neighbour", "Gaussian Processes", "k-Nearest Neighbours"
+), `Short name` = c("adaboostm1", "binomial", "featureless",
+"fnn", "gausspr", "ibk"), Package = c("RWeka", "stats", "mlr",
+"FNN", "kernlab", "RWeka")), row.names = c(NA, 6L), class = "data.frame")
+knitr::kable(lrns_df,
+             caption = paste("Sample of available learners for binomial",
+                             "tasks in the mlr3 package."),
+             caption.short = "Sample of available learners.", booktabs = TRUE)
+```
+
+Daje to wszystkie modele zdolne do modelowania problemów dwuklasowych (osuwisko tak lub nie).
+Wybieramymetodęklasyfikacji dwumianowej\\index{classification}używaną w sekcji @ref(conventional-model) i zaimplementowaną jako`classif.log_reg`w**mlr3learners**.
+Dodatkowo musimy określić`predict.type`,który określa typ prognozy, przy czym`prob`daje w wyniku prawdopodobieństwo wystąpienia osunięcia się ziemi w przedziale od 0 do 1 (odpowiada to`type = response`w`predict.glm()`).
+
+```{r 12-spatial-cv-13, eval=TRUE}
+# 2. specify learner
+learner = mlr3::lrn("classif.log_reg", predict_type = "prob")
+```
+
+Aby uzyskać dostęp do strony pomocy uczącego się i dowiedzieć się, z jakiego pakietu pochodzi, możemy uruchomić:
+
+```{r 12-spatial-cv-14, eval=FALSE}
+learner$help()
+```
+
+<!--
+Po określeniu uczącego się i zadania możemy trenować nasz model, który zasadniczo wykonuje w tle polecenie `glm()` dla naszego zadania.
+
+```{r 12-spatial-cv-15, eval=FALSE}
+learner$train(task)
+learner$model
+```
+
+```{r 12-spatial-cv-16, eval=FALSE, echo=FALSE}
+learner$model$formula
+task$data()
+learner$model
+```
+
+```{r 12-spatial-cv-17, eval=FALSE}
+fit = glm(lslpts ~ ., family = binomial(link = "logit"),
+          data = select(lsl, -x, -y))
+identical(fit$coefficients, learner$model$coefficients)
+```
+-->
+
+Kroki konfiguracyjne do modelowania za pomocą**mlr3**\\index{mlr3 (package)}mogą wydawać się żmudne.
+Należy jednak pamiętać, że ten pojedynczy interfejs zapewnia dostęp do ponad 130 algorytmów uczenia maszynowego przedstawionych na stronie`mlr3extralearners::list_mlr3learners()`; znacznie bardziej żmudne byłoby opanowanie interfejsu każdego z tych algorytmów!
+Dodatkowymi zaletami są prosta paralelizacja technik ponownego próbkowania oraz możliwość dostrajania hiperparametrów uczenia maszynowego\\index{hyperparameter}(patrz sekcja @ref(svm)).
+Co najważniejsze, resampling (przestrzenny) w**mlr3spatiotempcv** [@schratz_mlr3spatiotempcv_2021] jest prosty i wymaga tylko dwóch dodatkowych kroków: określenia metody resamplingu i jej uruchomienia.
+Wykorzystamy 100-krotnie powtórzone 5-krotne przestrzenne CV\\index{cross-validation!spatial CV}: pięć partycji zostanie wybranych na podstawie podanych współrzędnych w naszym`task` , a podział zostanie powtórzony 100 razy: [^13]
+
+[^13]:
+
+```
+Note that package **sperrorest** initially implemented spatial cross-validation in R [@brenning_spatial_2012].
+In the meantime, its functionality was integrated into the **mlr3** ecosystem which is the reason why we are using **mlr3** [@schratz_hyperparameter_2019]. The **tidymodels** framework is another umbrella package for streamlined modeling in R; however, it only recently integrated support for spatial cross-validation via **spatialsample**, which so far only supports one spatial resampling method.
+```
+
+```{r 12-spatial-cv-18, eval=TRUE}
+# 3. specify resampling
+resampling = mlr3::rsmp("repeated_spcv_coords", folds = 5, repeats = 100)
+```
+
+Aby przeprowadzić przestrzenne ponowne próbkowanie, uruchamiamy metodę`resample()`\`, wykorzystując wcześniej określone zadanie, algorytm uczenia i strategię ponownego próbkowania.
+Operacja ta zajmuje trochę czasu (około 15 sekund na nowoczesnym laptopie),ponieważ oblicza 500 partycji ponownego próbkowania i 500 modeli.
+Ponownie wybieramy AUROC jako miarę wydajności.
+Aby ją uzyskać, używamymetody`score()`obiektu wyjściowego wyników ponownego próbkowania (`score_spcv_glm`).Zwraca
+toobiekt`data.table`z 500 wierszami — po jednym dla każdego modelu.
+
+```{r 12-spatial-cv-19, eval=FALSE}
+# reduce verbosity
+lgr::get_logger("mlr3")$set_threshold("warn")
+# run spatial cross-validation and save it to resample result glm (rr_glm)
+rr_spcv_glm = mlr3::resample(task = task,
+                             learner = learner,
+                             resampling = resampling)
+# compute the AUROC as a data.table
+score_spcv_glm = rr_spcv_glm$score(measure = mlr3::msr("classif.auc"))
+# keep only the columns you need
+score_spcv_glm = dplyr::select(score_spcv_glm, task_id, learner_id,
+                               resampling_id, classif.auc)
+```
+
+Wynikiem powyższego fragmentu kodu jest ocena wydajności predykcyjnej modelu z uwzględnieniem redukcji błędu systematycznego.
+Zapisaliśmy go jako`extdata/12-bmr_score.rds`w repozytorium GitHub tej książki.
+W razie potrzeby można go wczytać w następujący sposób:
+
+```{r 12-spatial-cv-21}
+score = readRDS("extdata/12-bmr_score.rds")
+score_spcv_glm = dplyr::filter(score, learner_id == "classif.log_reg",
+                               resampling_id == "repeated_spcv_coords")
+```
+
+Aby obliczyć średnią AUROC dla wszystkich 500 modeli, uruchamiamy:
+
+```{r 12-spatial-cv-22}
+mean(score_spcv_glm$classif.auc) |>
+  round(2)
+```
+
+Aby spojrzeć na te wyniki z odpowiedniej perspektywy, porównajmy je zwartościamiAUROC\\index{AUROC}uzyskanymi w wyniku 100-krotnej 5-krotnej walidacji krzyżowej bez uwzględnienia przestrzeni (rysunek @ref(fig:boxplot-cv); kod dla walidacji krzyżowej niesprzestrzennej\\index{cross-validation}nie jest tutaj pokazany, ale zostanie omówiony w sekcji Ćwiczenia).
+Zgodnie z oczekiwaniami (patrz sekcja @ref(intro-cv)), wynik walidacji krzyżowej przestrzennej daje średnio niższe wartości AUROC niż konwencjonalne podejście walidacji krzyżowej, co podkreśla zbyt optymistyczną wydajność predykcyjną tego ostatniego ze względu na jego autokorelację przestrzenną\\index{autocorrelation!spatial}.
+
+```{r boxplot-cv, echo=FALSE, message=FALSE, out.width="75%", fig.cap="Boxplot showing the difference in GLM AUROC values on spatial and conventional 100-repeated 5-fold cross-validation.", fig.scap="Boxplot showing AUROC values."}
+library(ggplot2)
+# rename the levels of resampling_id
+score[, resampling_id := as.factor(resampling_id) |>
+        forcats::fct_recode("conventional CV" = "repeated_cv",
+                            "spatial CV" = "repeated_spcv_coords") |>
+            forcats::fct_rev()]
+# create the boxplot
+ggplot2::ggplot(data = score[learner_id == "classif.log_reg"],
+                mapping = ggplot2::aes(x = resampling_id, y = classif.auc)) +
+  ggplot2::geom_boxplot(fill = c("lightblue2", "mistyrose2")) +
+  ggplot2::theme_bw() +
+  ggplot2::labs(y = "AUROC", x = "")
+```
+
+### Dostosowanie przestrzenne hiperparametrów uczenia maszynowego{#svm}
+
+W sekcji @ref(intro-cv) omówiono uczenie maszynowe\\index{machine learning}jako część uczenia statystycznego\\index{statistical learning}.
+Podsumowując, przyjmujemy następującą definicję uczenia maszynowego autorstwa[Jasona Brownlee](https://machinelearningmastery.com/linear-regression-for-machine-learning/):
+
+> Uczenie maszynowe, a dokładniej dziedzina modelowania predykcyjnego, zajmuje się przede wszystkim minimalizacją błędu modelu lub tworzeniem możliwie najdokładniejszych prognoz, kosztem wyjaśnialności.
+> W uczeniu maszynowym stosowanym będziemy zapożyczać, ponownie wykorzystywać i czerpać algorytmy z wielu różnych dziedzin, w tym ze statystyki, i wykorzystywać je do tych celów.
+
+W sekcji @ref(glm) wykorzystano model GLM do prognozowania podatności na osuwiska.
+W niniejszej sekcji przedstawiono maszyny wektorów nośnych (SVM)\\index{SVM}do tego samego celu.
+Modeletypu losowy las\\index{random forest}mogą być bardziej popularne niż SVM; jednak pozytywny wpływ dostrajania hiperparametrów\\index{hyperparameter} na wydajność modelu jest znacznie bardziej wyraźny w przypadku SVM [@probst_hyperparameters_2018] .
+Ponieważ dostrajanie hiperparametrów (przestrzennych) jest głównym celem tej sekcji, użyjemy SVM.
+Tym, którzy chcą zastosować model lasu losowego, zalecamy przeczytanie tego rozdziału, a następnie przejście do rozdziału @ref(eco), w którym zastosujemy omówione dotychczas koncepcje i techniki do tworzenia map rozkładu przestrzennego w oparciu o model lasu losowego.
+
+SVM\\index{SVM}poszukują najlepszych możliwych „hiperpłaszczyzn” do rozdzielenia klas (wprzypadkuklasyfikacji\\index{classification}) oraz szacują „jądra” przy użyciu określonych hiperparametrów\\index{hyperparameter} w celu utworzenia nieliniowych granic między klasami [@james_introduction_2013] .
+Algorytmy uczenia maszynowego często zawierają hiperparametry\\index{hyperparameter}i parametry.
+Parametry można oszacować na podstawie danych, natomiast hiperparametry\\index{hyperparameter}ustala się przed rozpoczęciem uczenia (zobacz także[blog](https://machinelearningmastery.com/difference-between-a-parameter-and-a-hyperparameter/)[Machine Mastery](https://machinelearningmastery.com/difference-between-a-parameter-and-a-hyperparameter/)oraz[rozdział](https://mlr3book.mlr-org.com/chapters/chapter4/hyperparameter_optimization.html)[poświęcony optymalizacji](https://mlr3book.mlr-org.com/chapters/chapter4/hyperparameter_optimization.html)[hiperparametrów](https://mlr3book.mlr-org.com/chapters/chapter4/hyperparameter_optimization.html)w książce mlr3).
+Optymalnąkonfiguracjęhiperparametrów\\index{hyperparameter}zazwyczaj znajduje się w określonej przestrzeni poszukiwań i określa się ją za pomocą metod walidacji krzyżowej.Nazywa
+się todostrajaniemhiperparametrów\\index{hyperparameter}istanowigłówny temat tej sekcji.
+
+Niektóre implementacje SVM, takie jak ta dostarczana przez**kernlab**, pozwalają na automatyczne dostrajanie hiperparametrów, zazwyczaj w oparciu o losowe próbkowanie (zobacz górny rząd rysunku @ref(fig:partitioning)).Działa
+to w przypadku danych nieprzestrzennych, ale jest mniej przydatne w przypadku danych przestrzennych, gdzie należy przeprowadzić „dostrajanie przestrzenne”.
+
+Przed zdefiniowaniem dostrajania przestrzennego skonfigurujemydla SVM elementy składowe**mlr3**\\index{mlr3 (package)}, wprowadzone w sekcji @ref(glm).
+Zadanieklasyfikacji\\index{classification}pozostaje takie samo, dlatego możemy po prostu ponownie wykorzystaćobiekt`task`utworzony w sekcji @ref(glm).
+Modele uczące się implementujące SVM można znaleźć za pomocąpolecenia`list_mlr3learners()`z pakietu**mlr3extralearners**.
+
+```{r 12-spatial-cv-23, eval=TRUE, echo=TRUE}
+mlr3_learners = mlr3extralearners::list_mlr3learners()
+mlr3_learners |>
+  dplyr::filter(class == "classif" & grepl("svm", id)) |>
+  dplyr::select(id, class, mlr3_package, required_packages)
+```
+
+Spośród dostępnych opcji użyjemy`ksvm()`z pakietu**kernlab** [@karatzoglou_kernlab_2004] .
+Aby uwzględnić relacje nieliniowe, używamy popularnego jądra funkcji radialnej (lub Gaussa) (`"rbfdot" `),które jest również domyślnym ustawieniem w`ksvm()`.
+Ustawienieargumentu`type`na`"C-svc"`gwarantuje, że`ksvm()`rozwiązuje zadanie klasyfikacji.
+Aby upewnić się, że dostrajanie nie zostanie zatrzymane z powodu jednego nieudanego modelu, dodatkowo definiujemy model rezerwowy (więcej informacji można znaleźć na stronie<https://mlr3book.mlr-org.com/chapters/chapter10/advanced_technical_aspects_of_mlr3.html#sec-fallback>).
+
+```{r 12-spatial-cv-24}
+lrn_ksvm = mlr3::lrn("classif.ksvm", predict_type = "prob", kernel = "rbfdot",
+                     type = "C-svc")
+lrn_ksvm$encapsulate(method = "try",
+                     fallback = lrn("classif.featureless",
+                                    predict_type = "prob"))
+```
+
+Kolejnym etapem jest określenie strategii ponownego próbkowania.
+Ponownie zastosujemy 5-krotną kontrolę krzyżową przestrzenną z 100 powtórzeniami\\index{cross-validation!spatial CV}.
+
+```{r 12-spatial-cv-25}
+# performance estimation level
+perf_level = mlr3::rsmp("repeated_spcv_coords", folds = 5, repeats = 100)
+```
+
+Należy zauważyć, że jest to dokładnie ten sam kod, który wykorzystano do ponownego próbkowania w modelu GLM\\index{GLM}w sekcji @ref(glm); powtórzyliśmy go tutaj jedynie dla przypomnienia.
+
+Jak dotąd proces był identyczny z tym opisanym w sekcji @ref(glm).
+Kolejny krok jest jednak nowy: dostrojenie hiperparametrów\\index{hyperparameter}.
+ Wykorzystanie tych samych danych do oceny wydajności i dostrajania mogłoby potencjalnie prowadzić do zbyt optymistycznych wyników [@cawley_overfitting_2010] .
+Można tego uniknąć, stosując zagnieżdżone przestrzenne CV\\index{cross-validation!spatial CV}.
+
+```{r inner-outer, echo=FALSE, fig.cap="Schematic of hyperparameter tuning and performance estimation levels in CV. (Figure was taken from Schratz et al. (2019). Permission to reuse it was kindly granted.)", fig.scap="Schematic of hyperparameter tuning."}
+knitr::include_graphics("images/12_cv.png")
+```
+
+Oznacza to, że każdy fold dzielimy ponownie na pięć przestrzennie rozdzielonych subfoldów, które służą do określenia optymalnych hiperparametrów\\index{hyperparameter}(obiekt`tune_level`w poniższym fragmencie kodu; zob. rysunek @ref(fig:inner-outer) w celu uzyskania wizualnej reprezentacji).Losowy
+wybór wartości C i Sigma jest dodatkowo ograniczony do z góry zdefiniowanej przestrzeni dostrajania (obiekt`search_space`).
+ Zakres przestrzeni dostrajania został wybrany na podstawie wartości zalecanych w literaturze [@schratz_hyperparameter_2019] .
+Aby znaleźć optymalną kombinację hiperparametrów, dopasowujemy 50 modeli (obiekt`terminator`w poniższym fragmencie kodu) w każdej z tych podskładek przy losowo wybranych wartościach hiperparametrów C i Sigma.
+
+```{r 12-spatial-cv-26, eval=TRUE}
+# five spatially disjoint partitions
+tune_level = mlr3::rsmp("spcv_coords", folds = 5)
+# define the outer limits of the randomly selected hyperparameters
+search_space = paradox::ps(
+  C = paradox::p_dbl(lower = -12, upper = 15, trafo = function(x) 2^x),
+  sigma = paradox::p_dbl(lower = -15, upper = 6, trafo = function(x) 2^x)
+)
+# use 50 randomly selected hyperparameters
+terminator = mlr3tuning::trm("evals", n_evals = 50)
+tuner = mlr3tuning::tnr("random_search")
+```
+
+Kolejnym etapem jest modyfikacja algorytmu uczenia`lrn_ksvm`zgodnie ze wszystkimi cechami definiującymi dostrajanie hiperparametrów za pomocą`auto_tuner()`.
+
+```{r 12-spatial-cv-27, eval=TRUE}
+at_ksvm = mlr3tuning::auto_tuner(
+  learner = lrn_ksvm,
+  resampling = tune_level,
+  measure = mlr3::msr("classif.auc"),
+  search_space = search_space,
+  terminator = terminator,
+  tuner = tuner
+)
+
+# again we need to set a fallback model
+at_ksvm$encapsulate(
+  method = "try",
+  fallback = lrn("classif.featureless",
+    predict_type = "prob"
+  )
+)
+```
+
+Dostrajanie jest teraz skonfigurowane tak, aby dopasować 250 modeli w celu określenia optymalnych hiperparametrów dla jednej partii.
+Powtarzając to dla każdej partii, otrzymujemy 1250 (250 \* 5) modeli dla każdego powtórzenia.
+Powtórzenie 100 razy oznacza dopasowanie łącznie 125 000 modeli w celu zidentyfikowania optymalnych hiperparametrów (rysunek @ref(fig:partitioning)).
+Są one wykorzystywane w szacowaniu wydajności, co wymaga dopasowania kolejnych 500 modeli (5 partii \* 100 powtórzeń; patrz rysunek @ref(fig:partitioning)).
+Aby jeszcze bardziej wyjaśnić łańcuch przetwarzania szacowania wydajności, zapiszmy polecenia, które przekazaliśmy komputerowi:
+
+1. Poziom wydajności (lewa górna część rysunku @ref(fig:inner-outer)): podział zbioru danych na pięć przestrzennie rozdzielnych (zewnętrznych) podzbiorów.
+2. Poziom dostrajania (lewa dolna część rysunku @ref(fig:inner-outer)): wykorzystanie pierwszego podzbioru z poziomu wydajności i ponowne podzielenie go przestrzennie na pięć (wewnętrznych) podzbiorów w celu dostrojenia hiperparametrów.W każdym z tych wewnętrznych podzbiorówużyj 50 losowo wybranych hiperparametrów\\index{hyperparameter}, tj. dopasuj 250 modeli.
+3. Oszacowanie wydajności: użyj najlepszej kombinacji hiperparametrów z poprzedniego kroku (poziom dostrajania) i zastosuj ją do pierwszego zewnętrznego podzbioru na poziomie wydajności
+4. ,
+5. aby oszacować wydajność (AUROC\\index{AUROC}).
+6. Powtórz kroki 2 i 3 dla pozostałych czterech zewnętrznych podzbiorów.
+7. Powtórz kroki od 2 do 4, 100 razy.
+
+Proces dostrajania hiperparametrów i szacowania wydajności jest obliczeniowo intensywny.
+Aby skrócić czas działania modelu,**mlr3**oferuje możliwość wykorzystania równoległości\\index{parallelization}przy pomocypakietu**future**.
+Ponieważ zamierzamy przeprowadzić zagnieżdżoną walidację krzyżową, możemy zdecydować, czy chcemy zrównoleglić pętlę wewnętrzną, czy zewnętrzną (patrz lewa dolna część rysunku @ref(fig:inner-outer)).
+Ponieważ ta pierwsza uruchomi 125 000 modeli, podczas gdy ta druga tylko 500, jest dość oczywiste, że powinniśmy zrównoleglić pętlę wewnętrzną.
+Aby skonfigurować równoległość pętli wewnętrznej, uruchamiamy:
+
+```{r future, eval=FALSE}
+library(future)
+# execute the outer loop sequentially and parallelize the inner loop
+future::plan(list("sequential", "multisession"),
+             workers = floor(availableCores() / 2))
+```
+
+Dodatkowo poinstruowaliśmy**future**,aby używał tylko połowy dostępnych rdzeni (domyślnie), co pozwala innym użytkownikom pracować na tym samym klastrze obliczeniowym o wysokiej wydajności, jeśli jest on używany.
+
+Teraz jesteśmy gotowi do obliczeń zagnieżdżonej walidacji krzyżowej przestrzennej.
+Określenieparametrów`resample()`przebiega dokładnie tak samo, jak w przypadku użycia GLM\\index{GLM}, z tą różnicą, że pojawiają sięargumenty`store_models`i`encapsulate`.
+Ustawienie pierwszego z nich na`TRUE`umożliwiłoby wyodrębnieniewyników dostrajaniahiperparametrów\\index{hyperparameter}, co jest ważne, jeśli planujemy dalsze analizy dotyczące dostrajania.
+Drugi z nich zapewnia, że przetwarzanie będzie kontynuowane, nawet jeśli jeden z modeli zgłosi błąd.
+Pozwala to uniknąć zatrzymania procesu tylko z powodu jednego nieudanego modelu, co jest pożądane w przypadku dużych serii modeli.
+Po zakończeniu przetwarzania można przyjrzeć się modelom, które zakończyły się niepowodzeniem.
+Po zakończeniu przetwarzania dobrą praktyką jest jawne zatrzymanie równoległości\\index{parallelization}za pomocą`future:::ClusterRegistry("stop")`.
+Na koniec zapisujemy obiekt wyjściowy (`result`) na dysk na wypadek,gdybyśmy chcieli go wykorzystać w innej sesji R.
+Przed uruchomieniem poniższego kodu należy pamiętać, że jest to czasochłonne, ponieważ przeprowadzi on walidację krzyżową przestrzenną z wykorzystaniem 125 500 modeli.Na nowoczesnym
+laptopie może to z łatwością trwać pół dnia.
+Należy pamiętać, że czas działania zależy od wielu czynników: szybkości procesora, wybranego algorytmu, wybranej liczby rdzeni oraz zbioru danych.
+
+```{r 12-spatial-cv-30, eval=FALSE}
+progressr::with_progress(expr = {
+  rr_spcv_svm = mlr3::resample(task = task,
+                               learner = at_ksvm,
+                               # outer resampling (performance level)
+                               resampling = perf_level,
+                               store_models = FALSE,
+                               encapsulate = "evaluate")
+})
+# stop parallelization
+future:::ClusterRegistry("stop")
+# compute the AUROC values
+score_spcv_svm = rr_spcv_svm$score(measure = mlr3::msr("classif.auc"))
+# keep only the columns you need
+score_spcv_svm = dplyr::select(score_spcv_svm, task_id, learner_id,
+                               resampling_id, classif.auc)
+```
+
+Jeśli nie chcesz uruchamiać kodu lokalnie, zapisaliśmy[plik score\_svm](https://github.com/geocompx/geocompr/blob/main/extdata/12-bmr_score.rds)w repozytorium GitHub książki.
+Można go załadować w następujący sposób:
+
+```{r 12-spatial-cv-31}
+score = readRDS("extdata/12-bmr_score.rds")
+score_spcv_svm = dplyr::filter(score, learner_id == "classif.ksvm.tuned",
+                               resampling_id == "repeated_spcv_coords")
+```
+
+Przyjrzyjmy się końcowemu wskaźnikowi AUROC\\index{AUROC}: zdolności modelu do rozróżniania dwóch klas.
+
+```{r 12-spatial-cv-33}
+# final mean AUROC
+round(mean(score_spcv_svm$classif.auc), 2)
+```
+
+Wygląda na to, że wskaźnik GLM\\index{GLM}(agregowany wskaźnik AUROC\\index{AUROC}wyniósł`r score[resampling_id == "repeated_spcv_coords" & learner_id == "classif.log_reg", round(mean(classif.auc), 2)]`) jestw tym konkretnym przypadkunieco lepszy niż wskaźnik SVM\\index{SVM}.
+Aby zapewnić całkowicie rzetelne porównanie, należy również upewnić się, że oba modele wykorzystują dokładnie te same podziały — nie pokazaliśmy tego tutaj, ale zastosowaliśmy to w tle (więcej informacjimożna znaleźćw pliku`code/12_cv.R`w repozytorium GitHub książki).
+W tym celu**mlr3**oferuje funkcje`benchmark_grid()`oraz`benchmark()`, [zob. również https://mlr3book.mlr-org.com/chapters/chapter3/evaluation_and_benchmarking.html#sec-benchmarking, @bischl_applied_2024] .Funkcje
+te omówimy bardziej szczegółowo w ćwiczeniach.
+Należy również zauważyć, że użycie więcej niż 50 iteracji w losowym przeszukiwaniu SVM prawdopodobnie dałoby hiperparametry\\index{hyperparameter} , które skutkowałyby modelami o lepszym AUROC [@schratz_hyperparameter_2019] .
+Z drugiej strony, zwiększenie liczby iteracji losowego przeszukiwania zwiększyłoby również całkowitą liczbę modeli, a tym samym czas działania.
+
+Do tej porydo oceny zdolności algorytmów uczenia się do uogólniania na dane nieznane używanoprzestrzennego CV\\index{cross-validation!spatial CV}.
+Do celów mapowania predykcyjnego należy dostroić hiperparametry\\index{hyperparameter}na kompletnym zbiorze danych.Zostanie
+to omówione w rozdziale @ref(eco).
+
+## Wnioski
+
+Metody resamplingowe stanowią ważną część zestawu narzędzi analityka danych [@james_introduction_2013] .
+W niniejszym rozdziale wykorzystano walidację krzyżową\\index{cross-validation}do oceny wydajności predykcyjnej różnych modeli.
+Jak opisano w sekcji @ref(intro-cv), obserwacje z współrzędnymi przestrzennymi mogą nie być statystycznie niezależne z powodu autokorelacji przestrzennej\\index{autocorrelation!spatial}, co narusza podstawowe założenie walidacji krzyżowej.
+Przestrzenna walidacja krzyżowa\\index{cross-validation!spatial CV}rozwiązuje ten problem poprzez zmniejszenie błędu systematycznego wprowadzonego przez autokorelację przestrzenną\\index{autocorrelation!spatial}.
+
+Pakiet**mlr3**\\index{mlr3 (package)}ułatwia stosowanietechnik(przestrzennego) ponownego próbkowania\\index{resampling}w połączeniu z najpopularniejszymitechnikamiuczenia statystycznego\\index{statistical learning}, w tym regresją liniową\\index{regression!linear}, modelami semiparametrycznymi, takimi jak uogólnione modele addytywne\\index{generalized additive model}, oraztechnikamiuczenia maszynowego\\index{machine learning},takimi jak lasy losowe\\index{random forest}, SVM\\index{SVM} i wzmocnione drzewa regresji [@bischl_mlr:_2016;@schratz_hyperparameter_2019] .
+Algorytmy uczenia maszynowego często wymagająwprowadzeniahiperparametrów\\index{hyperparameter}, których optymalne „dostrojenie” może wymagać tysięcy przebiegów modelu, co z kolei wymaga dużych zasobów obliczeniowych, pochłaniając dużo czasu, pamięci RAM i/lub rdzeni procesora.
+**mlr3**rozwiązuje ten problem, umożliwiając równoległość obliczeń\\index{parallelization}.
+
+Uczenie maszynowe jako całość oraz jego wykorzystanie do analizy danych przestrzennych to rozległa dziedzina, a niniejszy rozdział przedstawił jedynie podstawy — jest jeszcze wiele do nauczenia się.
+W tym zakresie polecamy następujące zasoby:
+
+- **książkę****o mlr3**(@bischl\_applied\_2024;<https://mlr3book.mlr-org.com/>), a zwłaszcza[rozdział poświęcony obsłudze danych czasowo-przestrzennych](https://mlr3book.mlr-org.com/chapters/chapter13/beyond_regression_and_classification.html#spatiotemp-cv)
+- Artykuł naukowy na temat dostrajaniahiperparametrów\\index{hyperparameter} [@schratz_hyperparameter_2019]
+- Artykuł naukowy na temat korzystania z**mlr3spatiotempcv** [@schratz_mlr3spatiotempcv_2021]
+- W przypadku danych czasowo-przestrzennych należy uwzględnićautokorelacjęprzestrzenną\\index{autocorrelation!spatial}i czasową\\index{autocorrelation!temporal}podczas przeprowadzania CV\\index{cross-validation} [@meyer_improving_2018]
+
+## Ćwiczenia
+
+```{r, echo=FALSE, results="asis"}
+res = knitr::knit_child('_12-ex.Rmd', quiet = TRUE, options = list(include = FALSE, eval = FALSE))
+cat(res, sep = '\n')
+```
+
+
